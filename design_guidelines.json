@@ -1,0 +1,172 @@
+{
+  "project_name": "ControlPyme - Gestión Inteligente para PYMES",
+  "app_type": "saas_app",
+  "archetype": "ORGANIC & EARTHY + PERFORMANCE PRO",
+  "philosophy": "Simple para el usuario, profesional por dentro. Transforma Datos -> Información -> Insight -> Acción. Interfaz 100% en español con semáforo inteligente (🟢🟡🔴) y lenguaje cotidiano sin tecnicismos contables.",
+  "language": "es",
+  "default_currency": "USD",
+  "theme": {
+    "default_mode": "light",
+    "theme_toggle": true,
+    "colors": {
+      "primary": {
+        "main": "#0D5C3A",
+        "hover": "#0A482D",
+        "active": "#073521",
+        "light": "#E8F5E9",
+        "foreground": "#FFFFFF"
+      },
+      "secondary": {
+        "main": "#2C3E50",
+        "hover": "#1A252F",
+        "light": "#F1F5F9",
+        "foreground": "#FFFFFF"
+      },
+      "accent": {
+        "main": "#D97706",
+        "terracotta": "#C2410C",
+        "soft_amber": "#FEF3C7"
+      },
+      "semaforo": {
+        "green_bg": "#DCFCE7",
+        "green_text": "#15803D",
+        "green_border": "#86EFAC",
+        "yellow_bg": "#FEF9C3",
+        "yellow_text": "#A16207",
+        "yellow_border": "#FDE047",
+        "red_bg": "#FEE2E2",
+        "red_text": "#B91C1C",
+        "red_border": "#FCA5A5"
+      },
+      "background": {
+        "default": "#FAF9F5",
+        "surface": "#FFFFFF",
+        "muted": "#F3F4F6",
+        "card": "#FFFFFF",
+        "sidebar": "#0F172A"
+      },
+      "text": {
+        "primary": "#0F172A",
+        "secondary": "#475569",
+        "muted": "#64748B",
+        "inverted": "#F8FAFC"
+      },
+      "border": {
+        "subtle": "#E2E8F0",
+        "strong": "#CBD5E1"
+      }
+    }
+  },
+  "typography": {
+    "fonts": {
+      "heading": "Plus Jakarta Sans, Outfit, sans-serif",
+      "body": "Manrope, DM Sans, sans-serif",
+      "mono": "JetBrains Mono, monospace"
+    },
+    "google_fonts_url": "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Manrope:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap",
+    "hierarchy": {
+      "h1": "text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-slate-900",
+      "h2": "text-2xl sm:text-3xl font-bold tracking-tight text-slate-900",
+      "h3": "text-lg sm:text-xl font-semibold text-slate-800",
+      "h4": "text-base font-semibold text-slate-800",
+      "body_large": "text-lg text-slate-700 leading-relaxed",
+      "body": "text-sm sm:text-base text-slate-600 leading-normal",
+      "small": "text-xs font-medium text-slate-500",
+      "kpi_value": "text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900"
+    }
+  },
+  "layout_and_spacing": {
+    "spacing_scale": "p-4, p-6, p-8, gap-4, gap-6, gap-8",
+    "dashboard_grid": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6",
+    "bento_layout": {
+      "kpi_cards": "col-span-1",
+      "semaforo_status": "col-span-1 md:col-span-2 lg:col-span-4",
+      "sales_trend_chart": "col-span-1 md:col-span-2 lg:col-span-3",
+      "ai_insight_card": "col-span-1 md:col-span-1 lg:col-span-1",
+      "low_stock_alerts": "col-span-1 md:col-span-2 lg:col-span-2",
+      "recent_transactions": "col-span-1 md:col-span-2 lg:col-span-2"
+    },
+    "container_padding": "px-4 sm:px-6 lg:px-8 py-6 max-w-7xl mx-auto"
+  },
+  "components_and_routes": {
+    "navigation": {
+      "sidebar": "Fixed left collapsible sidebar on desktop, sheet/drawer on mobile. Must include logo, business name switcher, active route highlights, and quick search.",
+      "header": "Sticky top bar with business indicator, quick action buttons ('Registrar Venta +', 'Registrar Compra +'), AI Assistant pill launcher, and notifications.",
+      "nav_items": [
+        { "label": "Dashboard", "path": "/dashboard", "icon": "LayoutDashboard" },
+        { "label": "Productos / Stock", "path": "/productos", "icon": "Package" },
+        { "label": "Movimientos", "path": "/movimientos", "icon": "ArrowLeftRight" },
+        { "label": "Ventas", "path": "/ventas", "icon": "ShoppingCart" },
+        { "label": "Compras", "path": "/compras", "icon": "Truck" },
+        { "label": "Finanzas", "path": "/finanzas", "icon": "TrendingUp" },
+        { "label": "Reportes", "path": "/reportes", "icon": "FileText" }
+      ]
+    },
+    "onboarding_flow": {
+      "title": "Onboarding Progresivo Multi-Paso",
+      "steps": [
+        { "step": 1, "key": "nombre_negocio", "title": "¿Cómo se llama tu negocio?", "description": "Ej. Ferretería El Candado, Bodega Don José, Salón Bella" },
+        { "step": 2, "key": "tipo_negocio", "title": "¿Cuál es tu rubro o tipo de negocio?", "options": ["Abarrotes / Bodega", "Ferretería", "Papelería / Librería", "Salón de Belleza / Estética", "Tienda de Ropa / Calzado", "Otro emprendimiento"] },
+        { "step": 3, "key": "moneda", "title": "Moneda principal de trabajo", "default": "USD ($)" },
+        { "step": 4, "key": "cargar_productos", "title": "Agrega tus primeros 3 productos o carga masiva", "description": "Nombre, Precio de venta, Costo de compra, Cantidad en inventario" },
+        { "step": 5, "key": "primera_venta", "title": "Haz tu primera prueba de venta registrada", "description": "Simula una venta para ver cómo descuenta tu stock automáticamente" },
+        { "step": 6, "key": "completado", "title": "¡Todo listo! Tu panel inteligente está activado", "cta": "Ir al Dashboard" }
+      ]
+    },
+    "semaforo_indicator": {
+      "concept": "Evaluación automatizada de salud del negocio en 3 niveles",
+      "states": {
+        "GREEN": { "code": "🟢", "title": "Negocio en Excelente Estado", "badge": "bg-emerald-100 text-emerald-800 border-emerald-300", "meaning": "Ventas estables, margen positivo (>25%), stock saludable." },
+        "YELLOW": { "code": "🟡", "title": "Atención Requerida", "badge": "bg-amber-100 text-amber-800 border-amber-300", "meaning": "Pocos productos con stock bajo o ligera baja en ventas respecto a semana previa." },
+        "RED": { "code": "🔴", "title": "Acción Urgente Requerida", "badge": "bg-rose-100 text-rose-800 border-rose-300", "meaning": "Múltiples productos agotados o margen negativo en últimos días." }
+      }
+    },
+    "ai_assistant": {
+      "model": "GPT 5.4 Mini",
+      "display": "Widget Flotante o Panel Lateral Accesible con 1-clic desde cualquier pantalla",
+      "persona": "Asesor de negocios cercano, directo, práctico y sin modismos raros.",
+      "quick_prompts": [
+        "¿Qué productos debo comprar hoy?",
+        "¿Cuál es mi producto con mayor ganancia?",
+        "¿Cómo van mis ingresos comparados con la semana pasada?",
+        "Dame 3 consejos simples para mejorar mi margen"
+      ]
+    },
+    "data_tables": {
+      "style": "Clean, density-balanced tables with pagination, search, category badge filters, stock alerts, and inline action dropdowns.",
+      "csv_export": "Export button with date range filters on Products, Movements, Sales, Purchases, and Financial Reports."
+    }
+  },
+  "image_urls": {
+    "hero_retail_owner": "https://images.unsplash.com/photo-1648824572347-517357c9c44e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzN8MHwxfHNlYXJjaHwxfHxzbWFsbCUyMGJ1c2luZXNzJTIwb3duZXIlMjByZXRhaWwlMjBzdG9yZSUyMHNob3BrZWVwZXIlMjBpbnZlbnRvcnl8ZW58MHx8fHwxNzg3ODg0NTgyfDA&ixlib=rb-4.1.0&q=85",
+    "description": "Dueño de pequeña empresa usando tablet para control de inventario"
+  },
+  "motion_and_interactions": {
+    "hover_states": "hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 ease-in-out",
+    "kpi_entry": "staggered fade-in slide-up transition for summary widgets",
+    "toast_notifications": "sonner toast configuration for sales registration, stock alert triggers, and CSV downloads",
+    "modal_backdrop": "backdrop-blur-sm bg-slate-900/40 transition-opacity"
+  },
+  "accessibility_and_testids": {
+    "rule": "Mandatory data-testid attributes on all interactive elements (buttons, inputs, select triggers, table rows, modals, tabs).",
+    "examples": [
+      "data-testid='btn-register-sale'",
+      "data-testid='btn-register-purchase'",
+      "data-testid='input-product-search'",
+      "data-testid='select-category-filter'",
+      "data-testid='semaforo-status-card'",
+      "data-testid='ai-chat-input'",
+      "data-testid='btn-export-csv'",
+      "data-testid='onboarding-next-step-btn'"
+    ]
+  },
+  "instructions_to_main_agent": [
+    "1. Ensure all UI text is strictly in Spanish with natural, non-technical everyday wording (e.g. 'Ganancia estimada' instead of 'EBITDA', 'Costo de compra' instead of 'COGS', 'Unidades disponibles' instead of 'SKU On-Hand Quantity').",
+    "2. On first login or new business flow, launch the step-by-step Onboarding Modal/Screen before displaying full dashboard.",
+    "3. Keep Semáforo indicator prominent at the top of the main dashboard with actionable advice cards below it.",
+    "4. Add an AI Assistant Chat Widget (powered by backend endpoint using GPT 5.4 Mini prompt over local business context) accessible via floating button and top header pill.",
+    "5. Every data grid or list (Products, Movements, Sales, Purchases, Finances) must include filter controls and a functional 'Exportar CSV' button.",
+    "6. Include mock/seed data for new businesses or realistic demo datasets so the semáforo and charts render vibrant insights immediately upon review.",
+    "7. Set data-testid on all key buttons, inputs, tables, cards, and navigation links as specified in guidelines."
+  ]
+}

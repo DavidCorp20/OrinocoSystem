@@ -1,0 +1,110 @@
+{
+  "summary": "First full e2e review of ControlPyme (FastAPI + React + MongoDB, Spanish SaaS). Backend: created pytest suite (40 tests, 4 files) covering auth/cookies/refresh/brute-force, onboarding+multi-tenant isolation, products CRUD, dashboard, sale/purchase/manual-movement stock flows, expenses, CSV exports and the GPT 5.4-mini SSE assistant -> 39/40 pass (97.5%), 0 server 5xx in logs. Frontend: 8 Playwright runs on the public preview URL covering login/logout, wrong-password error, dashboard semaforo+KPIs+trend+recommendations+alerts, sidebar nav (7 links), header quick buttons, product CRUD+search+category filter+CSV, critical VENTA flow (stock 73->71 verified + 'Venta' salida movement + toast), over-stock rejection, COMPRA flow (43->48), manual movements (+4 reposicion / -1 danado / over-stock error), Finanzas (KPIs, 8-week chart, expense create+delete), Reportes (5 cards + dated CSV download), AI assistant real streaming with grounded data, full 5-step onboarding of a NEW account + multi-tenant isolation (0 products, semaforo verde), and mobile 390px. All UI verified 100% Spanish. One real security bug (brute-force lockout never fires) and one AI rendering bug found.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/auth/login",
+        "issue": "Brute-force lockout NEVER triggers behind the k8s ingress. routes_auth.py:47-48 builds the rate-limit key as f\"{request.client.host}:{email}\", but request.client.host is the ingress pod IP which rotates. Reproduced: 7 consecutive bad logins for one email all returned 401; MongoDB login_attempts held TWO docs ('10.79.139.10:bf.probe...' count:3 and '10.79.139.11:bf.probe...' count:4) instead of one with count 7. Playbook requirement #4 (429 after 5 fails) FAILS. Fix: key on the normalized email only (optionally combined with the FIRST hop of X-Forwarded-For), not request.client.host.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "POST /api/auth/login",
+        "issue": "Lockout counter never resets when the 15-min window expires. locked_until is rewritten on EVERY failure and count only clears on a successful login, so once count>=5 a single later failed attempt immediately re-locks the account for another 15 min (permanent 1-strike lockout). Reset count to 1 when the previous locked_until is in the past."
+      },
+      {
+        "endpoint": "POST /api/purchases",
+        "issue": "routes_purchases.py:56 silently overwrites the product's purchase_price with the latest unit_cost AND overwrites product.supplier. Confirmed in UI: 'Brocha 4 pulgadas' supplier changed 'Pinturas del Norte' -> 'TEST_Proveedor UI' after one purchase. No weighted-average cost, so a single odd-priced purchase rewrites all future margin/ganancia math for that product and destroys master supplier data with no warning."
+      },
+      {
+        "endpoint": "seed.py / GET /api/dashboard",
+        "issue": "Seed creates today's sales & movements at random hours INCLUDING hours later than the current time (rows dated '28 ago, 19:00' while server time was 03:1x UTC). Consequence: seeded rows sort above genuinely new records in /movimientos and /ventas, and ventas_hoy counts sales 'from the future'. Cap generated timestamps at now()."
+      },
+      {
+        "endpoint": "backend/.env",
+        "issue": "Dead config key CORS_ORIGINS=\"*\" is present but unused (server.py correctly builds explicit origins from FRONTEND_URL with allow_credentials=True). Remove it - a future refactor wiring it up would break credentialed CORS."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "AIAssistant.jsx",
+        "issue": "AI answers render as RAW MARKDOWN. The system prompt asks for bullets and GPT 5.4-mini returns '**Candado de acero 50mm**: esta en **0**...', but line 106 renders {m.content} as plain text (whitespace-pre-wrap) and no markdown lib exists in package.json. Users see literal ** asterisks throughout every answer (confirmed on desktop and mobile screenshots). Fix: add react-markdown, or instruct the prompt to emit plain text without markdown.",
+        "selector": "[data-testid^='ai-message-assistant-']",
+        "priority": "MEDIUM-HIGH"
+      },
+      {
+        "component": "Layout.jsx (mobile Sheet)",
+        "issue": "Duplicate data-testids: NavItems is rendered twice (desktop <aside class='hidden lg:block'> AND the mobile SheetContent), so while the mobile drawer is open there are TWO elements with data-testid='nav-productos'. Playwright's default/.first resolves the display:none desktop copy and every click times out. The drawer itself works correctly. Fix: suffix the mobile testids (nav-productos-mobile) or don't render the aside below the lg breakpoint.",
+        "selector": "[data-testid='nav-productos']",
+        "priority": "MEDIUM (testability)"
+      },
+      {
+        "component": "ui/sheet.jsx used by Layout mobile drawer",
+        "issue": "Console warning on every mobile menu open: '`DialogContent` requires a `DialogTitle` for the component to be accessible for screen reader users.' SheetContent has no SheetTitle. Add a VisuallyHidden SheetTitle.",
+        "selector": "[data-testid='mobile-menu-btn']",
+        "priority": "LOW (a11y)"
+      },
+      {
+        "component": "ui/sheet.jsx close button on mobile drawer",
+        "issue": "The Sheet's built-in X close button is a dark icon on the drawer's dark #0F172A background (near-invisible) and it overlaps the 'ControlPyme' logo row. Give it text-white/70 or hide it since tapping the overlay already closes the drawer.",
+        "selector": "[role='dialog'] button.absolute.right-4.top-4",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Dashboard / Finanzas KPI row",
+        "issues": [
+          "Inconsistent decimal separator in the same row: money uses the Spanish comma ('5049,94 US$') while Margen uses a dot ('44.2%'). Format the margin with the same es locale.",
+          "'Ventas de hoy' card sub-label reads '106 ventas en los ultimos 30 dias' - a 30-day scoped caption under a today-scoped KPI value; confusing. Use 'ventas hoy' or move that caption to the 30-day card."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/conftest.py",
+    "/app/backend/tests/test_auth.py",
+    "/app/backend/tests/test_onboarding_tenant.py",
+    "/app/backend/tests/test_products_dashboard.py",
+    "/app/backend/tests/test_flows.py",
+    "/app/backend/tests/test_assistant.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "CRITICAL: fix the brute-force rate-limit key in routes_auth.py - use the email (not request.client.host, which is a rotating ingress IP) so the 6th failed login returns 429. Re-run tests/test_auth.py::TestBruteForce.",
+    "Reset the login_attempts counter once locked_until has passed, instead of re-locking on a single later failure.",
+    "Render AI assistant markdown (add react-markdown) or make the prompt emit plain text - users currently see literal ** asterisks.",
+    "Decide/document whether POST /api/purchases should overwrite product.purchase_price and product.supplier; at minimum stop silently discarding the existing supplier.",
+    "Make the mobile-drawer nav data-testids unique (or drop the desktop aside below lg) so nav-* selectors are unambiguous.",
+    "Cap seeded sale/movement timestamps at now() so seeded 'today' rows aren't in the future.",
+    "Add a VisuallyHidden SheetTitle to the mobile drawer and fix the drawer's invisible X close button.",
+    "Format Margen with the es locale so the decimal separator matches the money KPIs; fix the 'Ventas de hoy' 30-day sub-label."
+  ],
+  "critical_code_review_comments": [
+    "routes_auth.py: never derive rate-limit identity from request.client.host in a k8s/ingress deployment - it is the proxy pod IP and rotates, silently disabling the whole lockout. Key on the identity being attacked (email).",
+    "routes_purchases.py:56 mutates master product data (purchase_price, supplier) as a side effect of a transactional write. Cost basis should be a weighted average (or a separate explicit action), otherwise profit/margin history becomes non-reproducible.",
+    "routes_sales.py / routes_purchases.py: stock validation and the decrement are separate non-atomic operations, so two concurrent sales of the last unit can both pass validation and drive stock negative. Use a conditional update ({stock: {$gte: qty}} with $inc) and 400 when matched_count == 0.",
+    "Layout.jsx renders NavItems twice with identical data-testid values, violating testid uniqueness and breaking automated selectors.",
+    "AIAssistant.jsx renders LLM output as raw text while the system prompt encourages markdown formatting - the prompt and the renderer disagree.",
+    "All files are well under 700 lines, all endpoints use Pydantic validation, _id is consistently projected out ({_id: 0} / pop) and verified absent in every tested response, all Motor calls are properly awaited, and the frontend uses process.env.REACT_APP_BACKEND_URL - no findings in those areas."
+  ],
+  "updated_files": [
+    "/app/backend/tests/conftest.py",
+    "/app/backend/tests/test_auth.py",
+    "/app/backend/tests/test_onboarding_tenant.py",
+    "/app/backend/tests/test_products_dashboard.py",
+    "/app/backend/tests/test_flows.py",
+    "/app/backend/tests/test_assistant.py"
+  ],
+  "success_rate": {"backend": "97.5% (39/40 pytest)", "frontend": "100% of tested user flows functional; 4 UI/design defects reported"},
+  "seed_data_creation": "Backend tests self-clean (all data prefixed TEST_ and deleted in fixtures). Residual UI-test artifacts in the demo business: 3 extra sales, 1 purchase (supplier of 'Brocha 4 pulgadas' now reads 'TEST_Proveedor UI'), 2 manual movements, stock deltas on 'Cemento gris 42.5kg' (-2) and 'Brocha 4 pulgadas' (+8). Onboarding test tenants created: test.pyme.496125@mail.com / TestPyme2026! (business 'TEST_Panaderia QA', 0 products) plus a few register-only accounts.",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "Admin: arenas.david1@gmail.com / ControlPyme2026! (works, redirects to dashboard). New tenant for isolation checks: test.pyme.496125@mail.com / TestPyme2026!",
+  "context_for_next_testing_agent": "Reusable pytest suite lives in /app/backend/tests/ (conftest.py exposes the `admin` fixture = logged-in session with cookies + Bearer, and new_email()). Run: cd /app/backend && python -m pytest tests/ -q (pytest.ini forces -n 2 --dist loadscope; do not edit it). Only tests/test_auth.py::TestBruteForce::TestBruteForce fails - it is a genuine product bug, not a flaky test; re-run it first after the fix. Dashboard JSON uses key `ventas_30` (not ventas_mes) and returns a FLAT payload (no `kpis` wrapper). Onboarding is 5 steps: 0 nombre, 1 rubro, 2 moneda, 3 productos (has onboarding-skip-btn), 4 confirmacion (onboarding-finish-btn); the Continuar button is correctly disabled until each step is valid. Playwright gotchas verified: (a) f-strings containing escaped quotes break the tool's parser - use %-formatting; (b) for mobile nav, scope to '[role=\"dialog\"] [data-testid=\"nav-productos\"]' because the desktop aside duplicates the testid; (c) the AI panel looks translucent for ~1s due to animate-rise - wait 3s before judging (NOT a bug, already ruled out); (d) Radix Selects in modals need ~400ms plus click(force=True). Verified working end-to-end and needing no retest unless touched: login/logout, dashboard, all 7 nav links, product CRUD/search/category/CSV, sale + over-stock rejection, purchase, manual movements, expenses, reportes CSV, AI SSE streaming (real grounded answers, history persists across reload), onboarding + multi-tenant isolation, mobile 390px with no horizontal overflow.",
+  "rca_of_the_issue": "Brute-force lockout: routes_auth.py:47-48 sets identifier = f\"{request.client.host}:{email}\". In this Kubernetes preview the TCP peer seen by uvicorn is the ingress/proxy pod, and requests are load-balanced across several such pods, so consecutive attempts against the SAME email land in different login_attempts documents. Repro: 7 POSTs to /api/auth/login with a bad password for one email -> all 401; mongosh shows two docs (10.79.139.10 count:3, 10.79.139.11 count:4), neither reaching MAX_ATTEMPTS=5. Mitigation: make the identifier the normalized email alone (an email-targeted lockout is the intended protection anyway); if IP granularity is wanted, parse the first hop of X-Forwarded-For rather than request.client.host. Secondary defect in the same handler: because locked_until is re-stamped on every failure and count is only cleared by a successful login, an account that once reached 5 failures is re-locked by a single failed attempt forever."
+}

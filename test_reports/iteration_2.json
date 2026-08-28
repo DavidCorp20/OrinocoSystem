@@ -1,0 +1,55 @@
+{
+  "summary": "Iteration-2 focused retest of the 6 fixes from iteration_1 plus a general smoke. Backend: added /app/backend/tests/test_retest_iter2.py (6 tests: brute-force 429 + mongosh verification of a single email-keyed login_attempts doc, counter reset after successful login, purchase weighted-average cost + supplier preservation, supplier set when empty, no future-dated sales/movements, ventas_hoy coherence). Full suite now 46/46 PASS (was 39/40). Frontend: 4 Playwright runs on the public preview URL (desktop 1920 + mobile 390) covering login->dashboard, KPI Margen es-locale formatting on /dashboard and /finanzas, 'Ventas de hoy' today-scoped caption, AI assistant real streamed answer (no raw ** asterisks), mobile drawer navigation with unique -mobile testids and sr-only SheetTitle, productos CSV export, and a quick sale that decremented stock 73->72. ALL 6 previously reported bugs are confirmed FIXED. No 5xx in backend logs during the run. Only one residual LOW a11y console warning remains.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/sales, POST /api/purchases",
+        "issue": "Carry-over (not part of this retest scope): stock validation and the $inc are still two non-atomic operations, so concurrent sales of the last unit can drive stock negative. Use a conditional update ({stock: {$gte: qty}} + $inc) and 400 on matched_count == 0."
+      },
+      {
+        "endpoint": "backend/.env",
+        "issue": "Carry-over: dead key CORS_ORIGINS=\"*\" still present and unused (server.py builds explicit origins from FRONTEND_URL with allow_credentials=True). Remove it."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Dialog/Sheet (Radix)",
+        "issue": "Remaining console warning on modal/drawer open: 'Missing `Description` or `aria-describedby={undefined}` for {DialogContent}'. The DialogTitle warning is GONE (sr-only SheetTitle works); only the description warning remains. Add aria-describedby={undefined} explicitly or a sr-only description.",
+        "selector": "[data-testid='mobile-menu-btn'] / [role='dialog']",
+        "priority": "LOW (a11y)"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_retest_iter2.py",
+    "/app/backend/tests/test_auth.py",
+    "/app/backend/tests/test_flows.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Optional LOW: silence the Radix 'Missing Description / aria-describedby' warning on Sheet/Dialog content.",
+    "Optional carry-over: make sale/purchase stock updates atomic (conditional $inc) to prevent negative stock under concurrency.",
+    "Optional carry-over: delete the unused CORS_ORIGINS key from backend/.env."
+  ],
+  "critical_code_review_comments": [
+    "routes_auth.py: brute-force key is now the normalized email and the counter is reset when locked_until has expired and deleted on successful login - verified in MongoDB (exactly ONE doc, identifier == email, count>=5, locked_until set).",
+    "routes_purchases.py: purchase_price is now a proper weighted average ((S*C + Q*C2)/(S+Q), verified 10@10 + 5@20 -> 13.33) and product.supplier is only set when previously empty - verified both branches.",
+    "seed.py ts(): today's rows are now generated as now() - random(2..480) minutes; no created_at later than now in /api/sales or /api/movements, and num_ventas_hoy matches the count of today's sales exactly.",
+    "Layout.jsx: mobile NavItems testids are suffixed -mobile, so nav-productos resolves to exactly 1 element even while the drawer is open; drawer navigation works.",
+    "AIAssistant.jsx renderMd(): real GPT 5.4-mini answer rendered with plain-text dashes, 0 literal '**' occurrences on screen.",
+    "format.js fmtPct uses toLocaleString('es') -> Margen renders '44,4%', consistent with '5060,94 US$' money formatting on both /dashboard and /finanzas."
+  ],
+  "updated_files": ["/app/backend/tests/test_retest_iter2.py"],
+  "success_rate": {"backend": "100% (46/46 pytest)", "frontend": "100% of retested flows pass; 1 LOW a11y warning remains"},
+  "seed_data_creation": "pytest self-cleaning TEST_ products (deleted in teardown). Two throwaway probe.*@mail.com accounts created for brute-force (one intentionally locked). UI smoke added ONE sale of 1x 'Cemento gris 42.5kg' (stock 73->72) on the demo business; demo otherwise untouched (Brocha 4 pulgadas supplier correctly reads 'Pinturas del Norte' again).",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "Admin: arenas.david1@gmail.com / ControlPyme2026! (works). Empty tenant: test.pyme.496125@mail.com / TestPyme2026!",
+  "context_for_next_testing_agent": "Suite: cd /app/backend && python -m pytest tests/ -q (pytest.ini forces -n 2 --dist loadscope; do not edit). 46 tests, all green. API path gotchas discovered this round: inventory movements are at /api/movements (NOT /api/inventory/movements) and there is NO GET /api/products/{id} - fetch /api/products and filter (helper _get_product in test_retest_iter2.py). Frontend testids: login-email-input / login-password-input / login-submit-button, kpi-margen, kpi-ventas-hoy, fin-margen, semaforo-status-card, ai-assistant-launcher + ai-chat-input + ai-chat-send-button + ai-message-assistant-N, quick-add-sale-btn opens sale-dialog (sale-item-product-0 Radix select needs ~500ms then click(force=True)), mobile-menu-btn + nav-*-mobile inside [role=dialog]. Productos 'Exportar CSV' has no data-testid - had to use get_by_role; consider adding products-export-csv. Semaforo still ROJO as expected (3 agotados).",
+  "rca_of_the_issue": "No new defects. All iteration_1 root causes are resolved: (1) login_attempts identifier is the email only, so the rotating ingress pod IP no longer splits the counter - 6th failed login returns 429 and mongosh shows a single doc; (2) purchases compute a weighted-average cost and no longer clobber master supplier data; (3) seed timestamps are capped at now(); (4) mobile testids unique + sr-only SheetTitle; (5) fmtPct uses the es locale; (6) AI output renders without literal asterisks."
+}
