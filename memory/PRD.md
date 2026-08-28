@@ -20,31 +20,36 @@ Plataforma web SaaS para pequeños y medianos negocios (tiendas, bodegas, ferret
 ## Personas
 - Propietario de PYME sin conocimientos contables/tecnológicos; quiere respuestas accionables, no números crudos.
 
-## Implementado (2026-08-28, iteración 1 + fixes iteración 2)
-- Auth completo (registro/login/logout/me/refresh) + admin arenas.david1@gmail.com sembrado + negocio demo con 12 productos, 30 días de ventas, compras, gastos y movimientos.
+## Implementado (2026-08-28, iteración 1 + fixes iteración 2 + iteración 3)
+- Auth completo (registro/login/logout/me/refresh) + admin arenas.david1@gmail.com (propietario + superadmin de plataforma).
 - Onboarding progresivo 5 pasos (nombre → rubro → moneda → productos opcionales → listo).
-- Dashboard: semáforo, 4 KPIs, comparación período anterior, tendencia 14 días, alertas stock, productos estrella, ventas recientes, recomendaciones accionables con causa.
-- Productos: CRUD, búsqueda, filtro categoría, importar/exportar CSV, badges de estado de stock.
-- Movimientos: entradas/salidas con motivos, historial con usuario y stock resultante, export CSV.
-- Ventas: multi-item con descuento, método de pago, descuento de stock atómico, toasts de alerta, export CSV.
-- Compras: multi-item, costo promedio ponderado, no pisa proveedor existente, export CSV.
-- Finanzas: ingresos/gastos/ganancia/margen con explicaciones en lenguaje simple, gráfico 8 semanas, gastos por categoría, CRUD gastos, export CSV.
-- Reportes: 5 reportes con filtro de fechas y descarga CSV.
-- Asistente "Pyme": chat flotante con streaming, quick prompts, respuestas basadas SOLO en datos del negocio, historial persistente.
-- Testing: 46/46 pytest + retest e2e completo (2 iteraciones). Bugs corregidos: brute-force por email (era IP de ingress rotativa), costo ponderado, timestamps futuros del seed, testids duplicados móvil, formato es-ES de margen, markdown crudo del asistente.
+- Dashboard: semáforo, 4 KPIs con equivalente en Bs, comparación período anterior, tendencia 14 días, alertas stock, productos estrella, ventas recientes, recomendaciones accionables, botón grande "Venta rápida" (POS).
+- POS Venta rápida: buscador/escáner de código de barras (keyboard-wedge, Enter agrega), carrito con +/-, cliente+RIF, total USD+Bs, cobro → factura automática.
+- Buscador de productos (nombre/SKU/barcode) en ventas y compras; unidad de medida visible (kg/unidad).
+- Facturación venezolana: ventas F-000001+ y compras C-000001+ con RIF emisor/cliente/proveedor, IVA 16% incluido (base imponible desglosada), tasa BCV del día y total en Bs; modal + impresión 80mm. Numeración fiscal sin huecos (número se asigna tras confirmar stock; compensación de stock si un ítem falla).
+- Tasa BCV: automática desde bcv.today (cache 1h, fallback a última conocida) o manual; precios duales USD/Bs en dashboard, productos, ventas y facturas; pill en header sincronizado en vivo vía AuthContext.
+- Roles: propietario (todo + equipo + configuración), administrador (operación completa), vendedor (ventas/productos/movimientos). Página Equipo (crear/eliminar usuarios). Guards backend (require_roles) + frontend (RANK + NoAccess).
+- Plataforma (superadmin): KPIs (negocios, activos, nuevos 30d, gastos del mes), tabla de negocios con activar/desactivar (login 403 si deshabilitado), gastos de plataforma CRUD, overview sin N+1.
+- 4 negocios demo: Ferretería El Candado (admin), Kiosco La Esquina (abarrotes VE), Verdulería Doña Rosa (por kg), Repuestos El Pistón (autopartes). Todos con 30 días de ventas, compras, gastos, movimientos y barcodes.
+- Productos: CRUD, búsqueda, filtro, importar/exportar CSV, precios USD+Bs, badges de stock.
+- Finanzas/Reportes/Asistente IA "Pyme" (GPT 5.4 Mini streaming) como en iteración 1.
+- Tipografía de números profesional (Plus Jakarta Sans tabular-nums, sin monospace).
+- Testing: 85/85 pytest + 4 iteraciones e2e. Bugs corregidos: brute-force por email, costo ponderado, numeración fiscal, N+1 plataforma, pill BCV stale, overlay ResizeObserver, roles en header, barcodes faltantes, tenants TEST_ purgados.
 
 ## Backlog priorizado
 ### P0 (siguiente iteración sugerida)
-- Edición/anulación de ventas y compras (reversar stock).
-- Eliminar CORS_ORIGINS muerto del .env (clave protegida del template; evaluar).
+- Edición/anulación de ventas y compras (reversar stock y marcar factura como anulada).
+- Impresora térmica 80mm real (formato listo, falta integración con drivers del navegador/print service).
 ### P1
-- Roles multi-usuario (admin, vendedor, consulta) — arquitectura ya aislada por business_id.
+- Cámara del teléfono como escáner (hoy: lectores keyboard-wedge; la UI ya soporta entrada directa).
+- Clientes y proveedores como entidades propias (hoy son campos de texto en facturas).
 - Analítica avanzada: ABC, rotación, rentabilidad por producto (datos ya disponibles en stats.py).
-- Clientes y proveedores como entidades propias.
-- Export PDF, recuperación de contraseña por email (Resend).
+- Export PDF de facturas y reportes, recuperación de contraseña por email (Resend).
+- Roles adicionales (solo-consulta) y permisos granulares por módulo.
 ### P2
 - Predicciones ML con histórico real (forecast demanda/agotamiento ya estimado por reglas).
-- Planes SaaS (gratuito/básico/pro), métricas MRR/churn, código de barras, app móvil.
+- Planes SaaS (gratuito/básico/pro) con cobro (Stripe), métricas MRR/churn, app móvil.
+- Multi-moneda completa (hoy: USD base + Bs referencial por tasa).
 
 ## Riesgos conocidos
 - Concurrencia extrema en stock mitigada con updates condicionales; falta transacción multi-doc si se escala.

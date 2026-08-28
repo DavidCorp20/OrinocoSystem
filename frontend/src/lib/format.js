@@ -78,6 +78,10 @@ export const EXIT_REASONS = [
   { value: "devolucion_proveedor", label: "Devolución a proveedor" },
 ];
 
+export const fmtBs = (n) => `Bs ${Number(n || 0).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+export const ROLE_LABELS = { propietario: "Propietario", administrador: "Administrador", vendedor: "Vendedor" };
+
 export const fmtPct = (n) => `${Number(n || 0).toLocaleString("es", { maximumFractionDigits: 1 })}%`;
 
 export const stockStatus = (p) => {

@@ -17,8 +17,10 @@ from routes_business import router as business_router
 from routes_dashboard import router as dashboard_router
 from routes_expenses import router as expenses_router
 from routes_inventory import router as inventory_router
+from routes_platform import router as platform_router
 from routes_products import router as products_router
 from routes_purchases import router as purchases_router
+from routes_rates import router as rates_router
 from routes_sales import router as sales_router
 from seed import seed_all
 
@@ -32,7 +34,7 @@ async def root():
     return {"message": "ControlPyme API"}
 
 
-for r in (auth_router, business_router, products_router, inventory_router, sales_router, purchases_router, expenses_router, dashboard_router, assistant_router):
+for r in (auth_router, business_router, products_router, inventory_router, sales_router, purchases_router, expenses_router, dashboard_router, assistant_router, rates_router, platform_router):
     api_router.include_router(r)
 
 app.include_router(api_router)

@@ -1,16 +1,17 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 import {
   ShoppingCart, Wallet, PiggyBank, Percent, AlertTriangle, PackageX,
-  Lightbulb, TrendingDown, TrendingUp, Info, CheckCircle2, Package,
+  Lightbulb, TrendingDown, TrendingUp, Info, CheckCircle2, Package, Zap,
 } from "lucide-react";
 import api from "../lib/api";
 import { useAuth } from "../context/AuthContext";
-import { fmtMoney, fmtNum, fmtPct, fmtDateTime } from "../lib/format";
+import { fmtBs, fmtMoney, fmtNum, fmtPct, fmtDateTime } from "../lib/format";
 import StatCard from "../components/StatCard";
+import QuickSale from "../components/QuickSale";
 
 const SEMAFORO_STYLES = {
   verde: { dot: "🟢", cls: "bg-emerald-50 border-emerald-300", text: "text-emerald-800" },
@@ -30,10 +31,17 @@ export default function Dashboard() {
   const currency = business?.currency || "USD";
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [rateInfo, setRateInfo] = useState(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     api.get("/dashboard").then((r) => setData(r.data)).catch(() => setError("No pudimos cargar tu panel."));
   }, []);
+
+  useEffect(() => {
+    load();
+    api.get("/rates/current").then((r) => setRateInfo(r.data)).catch(() => {});
+  }, [load]);
 
   if (error) return <p className="text-sm text-rose-600" data-testid="dashboard-error">{error}</p>;
   if (!data) {
@@ -49,13 +57,28 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-5" data-testid="dashboard-page">
-      <div className="flex items-end justify-between flex-wrap gap-2">
+      <div className="flex items-end justify-between flex-wrap gap-3">
         <div>
           <h1 className="font-heading text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900">
             Hola, {firstName}
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">Así va {business?.name} hoy.</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Así va {business?.name} hoy.{rateInfo?.rate ? ` Tasa del día: Bs ${fmtNum(rateInfo.rate)} por $1.` : ""}
+          </p>
         </div>
+        <button
+          data-testid="dashboard-quick-sale-btn"
+          onClick={() => setQuickOpen(true)}
+          className="flex items-center gap-3 bg-primary text-white rounded-2xl px-6 py-3.5 shadow-lg shadow-primary/25 hover:shadow-xl hover:-translate-y-0.5 transition-all"
+        >
+          <span className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center">
+            <Zap className="w-5 h-5" />
+          </span>
+          <span className="text-left">
+            <span className="block font-heading font-extrabold text-lg leading-tight">Venta rápida</span>
+            <span className="block text-xs text-white/70">Escanea o busca y cobra en segundos</span>
+          </span>
+        </button>
       </div>
 
       <div
@@ -71,8 +94,10 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard testid="kpi-ventas-hoy" title="Ventas de hoy" value={fmtMoney(data.ventas_hoy, currency)} icon={ShoppingCart}
+          bs={rateInfo?.rate ? fmtBs(data.ventas_hoy * rateInfo.rate) : undefined}
           hint={`${fmtNum(data.num_ventas_hoy)} venta(s) registradas hoy`} delay={0} />
         <StatCard testid="kpi-ventas-mes" title="Ventas (30 días)" value={fmtMoney(data.ventas_30, currency)} icon={Wallet} delay={60}
+          bs={rateInfo?.rate ? fmtBs(data.ventas_30 * rateInfo.rate) : undefined}
           badge={
             data.variacion !== null && (
               <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${data.variacion >= 0 ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}`}
@@ -84,6 +109,7 @@ export default function Dashboard() {
           }
           hint={`${fmtNum(data.num_ventas_30)} ventas en el período · comparado con los 30 días anteriores`} />
         <StatCard testid="kpi-ganancia" title="Ganancia estimada" value={fmtMoney(data.ganancia_estimada, currency)} icon={PiggyBank} delay={120}
+          bs={rateInfo?.rate ? fmtBs(data.ganancia_estimada * rateInfo.rate) : undefined}
           hint="Lo que vendiste, menos el costo de los productos y tus gastos" />
         <StatCard testid="kpi-margen" title="Margen" value={fmtPct(data.margen)} icon={Percent} delay={180}
           hint={`Por cada $100 que vendes, unos $${fmtNum(data.margen)} quedan como margen antes de gastos`} />
@@ -216,6 +242,8 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      <QuickSale open={quickOpen} onClose={() => { setQuickOpen(false); load(); }} />
     </div>
   );
 }

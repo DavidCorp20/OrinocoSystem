@@ -1,0 +1,104 @@
+{
+  "summary": "Iteration-3 full test of the 11 requested features (facturación venezolana, tasa BCV, POS Venta rápida, escáner/buscador, roles, plataforma superadmin, 3 negocios demo). Backend: added /app/backend/tests/test_iter3_facturas_roles_platform.py (28 tests: rates current/refresh, factura F-/C- con subtotal+IVA=total y total_bs, contador incremental, búsqueda por barcode, permisos vendedor/administrador, plataforma overview/expenses/toggle+login 403, aislamiento cross-tenant, settings BCV manual↔auto). Full suite = 74 tests, 73 PASS / 1 FAIL (el fallo es un hallazgo real: el negocio demo principal 'Ferretería El Candado' no tiene barcodes). Frontend: 6 corridas Playwright (desktop 1920 + mobile 390) sobre la URL pública cubriendo Venta rápida completa (búsqueda 'martillo' → carrito → +/- → total Bs 9.500 con tasa 791,67 → cobro → factura F-000013 con IVA 16% y TOTAL Bs → stock decrementado), Enter por SKU exacto que agrega sin clic, diálogo de venta normal con chip + sale-item-clear-0 + cliente/RIF → F-000014, compras con purchase-scan-input + proveedor/RIF → C-000008 con IVA y Bs, facturas desde historial (venta y compra) e Imprimir (abre ventana, no rompe), roles (vendedor: sidebar reducido, no-access en /compras /finanzas /equipo /plataforma, pero SÍ puede cobrar), Plataforma (4 KPIs, los 4 negocios demo, gasto +17 US$ reflejado en plat-gastos, toggle → login 403 'Tu cuenta está deshabilitada' → reactivado), Configuración BCV manual 100 ↔ auto, y los 3 negocios demo con datos y precios duales USD/Bs. Sin 5xx en backend logs. 3 bugs no bloqueantes encontrados (pill BCV stale, botón Compra visible para vendedor, overlay de error de CRA que bloquea clics) + gaps de datos demo.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "seed.py (Ferretería El Candado)",
+        "issue": "0/12 productos del negocio demo principal (la cuenta del usuario, arenas.david1@gmail.com) tienen 'barcode' (null). Los 3 negocios nuevos sí (12/12). El escáner keyboard-wedge NO se puede demostrar en la cuenta con la que el usuario entra: solo funciona por SKU exacto. Rellenar barcodes en el perfil de ferretería del seed (idempotente: $set solo si barcode es null)."
+      },
+      {
+        "endpoint": "seed.py (businesses)",
+        "issue": "El doc de 'Ferretería El Candado' no tiene el campo 'active' (creado por el seed antiguo). Funciona por el default True en /platform/overview y en _check_tenant, pero el esquema queda inconsistente; hacer un backfill {active: True} en el seed."
+      },
+      {
+        "endpoint": "PUT /api/business/settings",
+        "issue": "Al volver a bcv_mode='auto' no se limpia bcv_rate (queda la tasa manual vieja almacenada). No afecta el cálculo (get_effective_rate mira el modo primero) pero genera datos confusos y sería el fallback silencioso si BCV falla."
+      },
+      {
+        "endpoint": "GET /api/platform/overview",
+        "issue": "N+1 queries: por cada negocio hace 4 count_documents + 1 find_one de usuario dentro del bucle (11 negocios = 55 round-trips). Con volumen real se degrada; usar $facet/aggregate o count agrupado."
+      },
+      {
+        "endpoint": "DB (datos de pruebas antiguas)",
+        "issue": "Quedan 7 tenants 'TEST_Tienda QA'/'TEST_Panaderia QA' de iteraciones previas contando en los KPIs de Plataforma (total 11, nuevos_30 7). No es bug de código, pero la demo de plataforma se ve sucia; considerar limpiar o filtrar."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Layout header (pill de tasa)",
+        "issue": "El pill 'header-bcv-rate' queda STALE tras guardar la tasa en /configuracion: se guarda manual=100, la tarjeta muestra 'Bs 100 (manual)' pero el header sigue mostrando 'Bs 791,67' hasta un reload completo (F5). Causa: Layout.jsx línea 100-102 hace api.get('/rates/current') una sola vez con deps [] y no hay forma de refrescarlo. Exponer la tasa en AuthContext o un callback de refresh que Configuracion invoque al guardar.",
+        "selector": "[data-testid='header-bcv-rate']",
+        "priority": "MEDIUM"
+      },
+      {
+        "component": "Layout header (acceso por rol)",
+        "issue": "El botón '+ Compra' (quick-add-purchase-btn) se renderiza para el rol vendedor aunque /compras devuelve 'No tienes acceso'; el usuario llega a un callejón sin salida. Layout.jsx línea 146-152 no filtra por RANK como sí hace NavItems.",
+        "selector": "[data-testid='quick-add-purchase-btn']",
+        "priority": "MEDIUM"
+      },
+      {
+        "component": "CRA dev-server error overlay",
+        "issue": "Aparece el overlay rojo 'Uncaught runtime errors: ResizeObserver loop completed with undelivered notifications' (bundle.js handleError) sobre /plataforma; el iframe #webpack-dev-server-client-overlay intercepta los clics y bloquea toda la página hasta cerrarlo (Playwright no pudo clicar platform-expense-delete-*). Error benigno de ResizeObserver (Recharts/Radix) pero rompe la UX del preview. Suprimirlo (patch de window.onerror para el mensaje de ResizeObserver o debounce en el contenedor de charts).",
+        "selector": "#webpack-dev-server-client-overlay",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Venta rápida → Factura",
+        "issues": [
+          "El modal de factura se abre ENCIMA del diálogo de Venta rápida que sigue abierto detrás con el carrito ya vacío y el CTA 'Cobrar 0,00 US$' visible/deshabilitado: se ve un doble overlay confuso. Considerar cerrar el POS al emitir la factura o atenuar más el fondo.",
+          "El modal de factura es muy estrecho (~310px de contenido en 1920px) y con tipografía muy pequeña; el título 'Factura F-000013' queda pegado a la X. Ampliar a ~max-w-md y aumentar el tamaño base."
+        ]
+      },
+      {
+        "screen": "Facturas de ventas legacy (seed)",
+        "issues": [
+          "Para ventas antiguas sin invoice_number el modal titula solo 'Factura' (sin número) y omite la sección Bs; se ve incompleto. Mostrar 'Sin número de factura (venta anterior)' para que no parezca un error."
+        ]
+      },
+      {
+        "screen": "/productos (Verdulería Doña Rosa)",
+        "issues": [
+          "La unidad del producto (kg) no se muestra en ninguna columna: el stock aparece como '28 / mín 4' sin unidad, justo en el negocio demo cuyo diferencial es la venta por kg. Añadir la unidad junto al stock."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter3_facturas_roles_platform.py",
+    "/app/backend/tests/test_retest_iter2.py",
+    "/app/backend/tests/test_auth.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Refrescar la tasa del header tras guardar en /configuracion (mover rate a AuthContext o refetch); hoy queda desincronizado hasta un F5.",
+    "Ocultar quick-add-purchase-btn (y cualquier atajo a /compras /finanzas) para el rol vendedor usando el mismo RANK de NavItems.",
+    "Suprimir el error 'ResizeObserver loop completed with undelivered notifications' que dispara el overlay de CRA y bloquea los clics en /plataforma.",
+    "Sembrar barcodes en los 12 productos de 'Ferretería El Candado' (hoy null) para que el escáner sea demostrable en la cuenta del usuario.",
+    "Backfill {active: true} en el doc de negocio de la ferretería y limpiar bcv_rate al volver a modo auto.",
+    "UI de factura: ampliar el modal y cerrar/limpiar el diálogo de Venta rápida al emitirla; mostrar unidad (kg) en /productos."
+  ],
+  "critical_code_review_comments": [
+    "Layout.jsx: la tasa se consulta una vez por montaje sin invalidación; cualquier cambio de tasa (manual o refresh BCV) deja el header inconsistente con los KPIs que sí vienen del backend.",
+    "Layout.jsx: la autorización por rol está duplicada (NAV.min en NavItems vs botones del header sin filtro) — extraer un helper can(role, section) para evitar fugas como '+ Compra' en vendedor.",
+    "routes_platform.py: overview hace N+1 (5 queries por negocio); migrar a aggregate con $lookup/$facet antes de escalar.",
+    "routes_sales.py/routes_purchases.py: el contador de factura se incrementa ANTES de descontar stock; si un $inc de stock falla y se lanza 400, la venta ya quedó insertada y el número consumido (hueco en la numeración fiscal). Reservar el número o insertar la venta solo tras confirmar todos los movimientos.",
+    "El backend recarga (WatchFiles) al escribir en /app/backend/tests — considerar excluir tests/ del reload dir para no reiniciar la API durante las pruebas."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter3_facturas_roles_platform.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "success_rate": {"backend": "98.6% (73/74 tests)", "frontend": "100% de los flujos pedidos funcionan; 3 bugs no bloqueantes de UI"},
+  "seed_data_creation": "Solo datos mínimos y revertidos: ventas de prueba en Ferretería (F-000013/F-000014 y otras de pytest, cliente 'TEST_QA Cliente'), compras C-000008 y de pytest (proveedor TEST_QA Proveedor), gasto de plataforma TEST_QA (eliminado), usuarios de equipo qa.vendedor/qa.administrador (eliminados, 0 restantes), Kiosco deshabilitado y REACTIVADO, tasas manuales revertidas a auto y bcv_rate=null en los 4 negocios. Verificado en DB: 0 negocios inactivos, 0 gastos de plataforma, 0 usuarios qa.*",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "arenas.david1@gmail.com / ControlPyme2026! (propietario+superadmin, Ferretería El Candado); kiosco|verduleria|repuestos.demo@controlpyme.com / Demo2026!",
+  "context_for_next_testing_agent": "Suite: /app/backend/tests (74 tests, pytest.ini con -n 2 --dist loadscope; NO modificar pytest.ini). El único fallo esperado es TestBarcodeSearch::test_ferreteria_demo_products_have_barcodes (documenta el gap de barcodes en el seed de la ferretería): pasará cuando el agente principal siembre barcodes. Notas de testing: (1) NO llamar POST /api/auth/login vía fetch dentro de la página de Playwright: sobreescribe las cookies httpOnly y cambia de tenant en medio del test. (2) El overlay #webpack-dev-server-client-overlay puede bloquear clics; eliminarlo por JS antes de interactuar. (3) ProductCombobox: escribir texto y clicar [data-testid='<testid>-result-<id>'] o Enter con barcode/SKU exacto. (4) Ventas del seed no tienen invoice_number (columna '—') — esperado. (5) Verificar siempre al final: 0 negocios inactivos, bcv_mode auto y bcv_rate null, 0 usuarios qa.*, 0 platform_expenses.",
+  "rca_of_the_issue": "Pill BCV stale: Layout.jsx hace api.get('/rates/current') dentro de un useEffect con deps [] y guarda el valor en estado local; Configuracion.jsx guarda la tasa vía PUT /api/business/settings pero no hay canal para invalidar ese estado, y la navegación entre páginas es client-side (Layout nunca se remonta), así que el header muestra el valor anterior hasta un reload. Los KPIs sí son correctos porque el equivalente en Bs lo calcula el backend. Botón '+ Compra' en vendedor: la lógica de RANK solo se aplica en NavItems, los atajos del header se renderizan sin condición de rol."
+}

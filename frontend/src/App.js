@@ -1,8 +1,8 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
 import "@/App.css";
-import { AuthProvider } from "@/context/AuthContext";
-import Protected from "@/components/Protected";
+import { AuthProvider, useAuth } from "@/context/AuthContext";
+import Protected, { NoAccess } from "@/components/Protected";
 import Layout from "@/components/Layout";
 import AuthPage from "@/pages/AuthPage";
 import Onboarding from "@/pages/Onboarding";
@@ -13,6 +13,17 @@ import Ventas from "@/pages/Ventas";
 import Compras from "@/pages/Compras";
 import Finanzas from "@/pages/Finanzas";
 import Reportes from "@/pages/Reportes";
+import Equipo from "@/pages/Equipo";
+import Configuracion from "@/pages/Configuracion";
+import Plataforma from "@/pages/Plataforma";
+
+const RANK = { vendedor: 1, administrador: 2, propietario: 3 };
+
+function Guard({ min, superOnly = false, children }) {
+  const { role, isSuper } = useAuth();
+  if (superOnly) return isSuper ? children : <NoAccess />;
+  return (RANK[role] ?? 3) >= RANK[min] ? children : <NoAccess />;
+}
 
 function App() {
   return (
@@ -41,9 +52,12 @@ function App() {
               <Route path="/productos" element={<Productos />} />
               <Route path="/movimientos" element={<Movimientos />} />
               <Route path="/ventas" element={<Ventas />} />
-              <Route path="/compras" element={<Compras />} />
-              <Route path="/finanzas" element={<Finanzas />} />
-              <Route path="/reportes" element={<Reportes />} />
+              <Route path="/compras" element={<Guard min="administrador"><Compras /></Guard>} />
+              <Route path="/finanzas" element={<Guard min="administrador"><Finanzas /></Guard>} />
+              <Route path="/reportes" element={<Guard min="administrador"><Reportes /></Guard>} />
+              <Route path="/equipo" element={<Guard min="propietario"><Equipo /></Guard>} />
+              <Route path="/configuracion" element={<Guard min="propietario"><Configuracion /></Guard>} />
+              <Route path="/plataforma" element={<Guard superOnly><Plataforma /></Guard>} />
             </Route>
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

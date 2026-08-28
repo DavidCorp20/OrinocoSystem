@@ -33,6 +33,8 @@ async def register(data: RegisterIn, response: Response):
         "email": email,
         "name": data.name.strip(),
         "password_hash": hash_password(data.password),
+        "role": "propietario",
+        "platform_role": None,
         "business_id": None,
         "created_at": now_iso(),
     }
@@ -65,6 +67,10 @@ async def login(data: LoginIn, request: Request, response: Response):
         raise HTTPException(status_code=401, detail="Correo o contraseña incorrectos")
 
     await db.login_attempts.delete_one({"identifier": identifier})
+    if user.get("business_id"):
+        biz = await db.businesses.find_one({"id": user["business_id"]}, {"active": 1})
+        if biz and biz.get("active") is False:
+            raise HTTPException(status_code=403, detail="Tu cuenta está deshabilitada. Contacta al soporte de ControlPyme.")
     tokens = set_auth_cookies(response, user)
     return {"user": public_user(user), "business": await _business_of(user), **tokens}
 

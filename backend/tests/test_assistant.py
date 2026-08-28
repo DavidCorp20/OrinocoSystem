@@ -37,7 +37,9 @@ class TestAssistant:
         assert "no pude procesar tu consulta" not in full, "LLM call failed (fallback message returned)"
         assert len(full) > 60, full
         assert len(chunks) > 1, f"expected multiple SSE deltas (streaming), got {len(chunks)}"
-        assert any(w in full.lower() for w in ("stock", "producto", "comprar", "reponer")), full
+        # Grounding check: the answer must mention inventory/purchase vocabulary
+        # (LLM wording varies: "compra hoy", "repón", "quedan 4"...), so match stems.
+        assert any(w in full.lower() for w in ("stock", "product", "compr", "repon", "repón", "invent", "agotad")), full
 
     def test_chat_persists_to_history(self, admin):
         msgs = admin.get(f"{API}/assistant/history").json()["messages"]

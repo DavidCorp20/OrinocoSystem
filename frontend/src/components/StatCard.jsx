@@ -1,4 +1,4 @@
-export default function StatCard({ title, value, hint, icon: Icon, badge, testid, delay = 0 }) {
+export default function StatCard({ title, value, hint, icon: Icon, badge, testid, bs, delay = 0 }) {
   return (
     <div
       data-testid={testid}
@@ -17,6 +17,7 @@ export default function StatCard({ title, value, hint, icon: Icon, badge, testid
         <span className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 font-num">{value}</span>
         {badge}
       </div>
+      {bs && <p className="mt-1 text-xs text-muted-foreground font-num" data-testid={`${testid}-bs`}>≈ {bs}</p>}
       {hint && <p className="mt-2 text-xs text-muted-foreground leading-snug">{hint}</p>}
     </div>
   );

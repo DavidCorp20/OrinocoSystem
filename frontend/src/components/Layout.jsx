@@ -2,26 +2,37 @@ import { useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Package, ArrowLeftRight, ShoppingCart, Truck, TrendingUp,
-  FileText, Store, LogOut, Menu, Plus, Bot,
+  FileText, Store, LogOut, Menu, Plus, Bot, Users, Settings, ShieldCheck,
 } from "lucide-react";
+import { fmtNum } from "../lib/format";
 import { useAuth } from "../context/AuthContext";
 import AIAssistant from "./AIAssistant";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "./ui/sheet";
 
+const RANK = { vendedor: 1, administrador: 2, propietario: 3 };
+
 const NAV = [
-  { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard, testid: "nav-dashboard" },
-  { label: "Productos", path: "/productos", icon: Package, testid: "nav-productos" },
-  { label: "Movimientos", path: "/movimientos", icon: ArrowLeftRight, testid: "nav-movimientos" },
-  { label: "Ventas", path: "/ventas", icon: ShoppingCart, testid: "nav-ventas" },
-  { label: "Compras", path: "/compras", icon: Truck, testid: "nav-compras" },
-  { label: "Finanzas", path: "/finanzas", icon: TrendingUp, testid: "nav-finanzas" },
-  { label: "Reportes", path: "/reportes", icon: FileText, testid: "nav-reportes" },
+  { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard, testid: "nav-dashboard", min: "vendedor" },
+  { label: "Productos", path: "/productos", icon: Package, testid: "nav-productos", min: "vendedor" },
+  { label: "Movimientos", path: "/movimientos", icon: ArrowLeftRight, testid: "nav-movimientos", min: "vendedor" },
+  { label: "Ventas", path: "/ventas", icon: ShoppingCart, testid: "nav-ventas", min: "vendedor" },
+  { label: "Compras", path: "/compras", icon: Truck, testid: "nav-compras", min: "administrador" },
+  { label: "Finanzas", path: "/finanzas", icon: TrendingUp, testid: "nav-finanzas", min: "administrador" },
+  { label: "Reportes", path: "/reportes", icon: FileText, testid: "nav-reportes", min: "administrador" },
+  { label: "Equipo", path: "/equipo", icon: Users, testid: "nav-equipo", min: "propietario" },
+  { label: "Configuración", path: "/configuracion", icon: Settings, testid: "nav-configuracion", min: "propietario" },
 ];
 
 function NavItems({ onNavigate, mobile = false }) {
+  const { role, isSuper } = useAuth();
+  const rank = RANK[role] ?? 3;
+  const items = NAV.filter((n) => rank >= RANK[n.min]);
+  const all = isSuper
+    ? [...items, { label: "Plataforma", path: "/plataforma", icon: ShieldCheck, testid: "nav-plataforma" }]
+    : items;
   return (
     <nav className="flex-1 px-3 py-4 space-y-1">
-      {NAV.map((item) => (
+      {all.map((item) => (
         <NavLink
           key={item.path}
           to={item.path}
@@ -80,7 +91,7 @@ function SidebarContent({ onNavigate, mobile = false }) {
 }
 
 export default function Layout() {
-  const { business } = useAuth();
+  const { business, rate, isAdmin } = useAuth();
   const [aiOpen, setAiOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -110,6 +121,15 @@ export default function Layout() {
               <p className="text-xs text-muted-foreground">Moneda: {business?.currency || "USD"}</p>
             </div>
 
+            {rate?.rate && (
+              <span
+                data-testid="header-bcv-rate"
+                title={rate.source === "manual" ? `Tasa manual colocada el ${rate.date || "—"}` : `Tasa BCV vigente: ${rate.date || "—"}`}
+                className="hidden md:inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1.5 rounded-full"
+              >
+                1 USD = Bs {fmtNum(rate.rate)}
+              </span>
+            )}
             <button
               data-testid="ai-assistant-launcher"
               onClick={() => setAiOpen(true)}
@@ -117,13 +137,15 @@ export default function Layout() {
             >
               <Bot className="w-3.5 h-3.5" /> Preguntar a Pyme
             </button>
-            <Link
-              to="/compras?nueva=1"
-              data-testid="quick-add-purchase-btn"
-              className="hidden sm:flex items-center gap-1.5 text-xs font-semibold border border-border bg-card px-3.5 py-2 rounded-full hover:bg-secondary transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" /> Compra
-            </Link>
+            {isAdmin && (
+              <Link
+                to="/compras?nueva=1"
+                data-testid="quick-add-purchase-btn"
+                className="hidden sm:flex items-center gap-1.5 text-xs font-semibold border border-border bg-card px-3.5 py-2 rounded-full hover:bg-secondary transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" /> Compra
+              </Link>
+            )}
             <Link
               to="/ventas?nueva=1"
               data-testid="quick-add-sale-btn"

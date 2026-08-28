@@ -13,6 +13,15 @@ export function LoadingScreen() {
   );
 }
 
+export function NoAccess() {
+  return (
+    <div className="bg-card border border-border rounded-2xl p-12 text-center" data-testid="no-access">
+      <p className="font-heading font-bold text-lg text-slate-800">No tienes acceso a esta sección</p>
+      <p className="text-sm text-muted-foreground mt-1">Pídele al propietario del negocio que ajuste tu rol en la sección Equipo.</p>
+    </div>
+  );
+}
+
 export default function Protected({ children, requireBusiness = true }) {
   const { status, business } = useAuth();
   const loc = useLocation();

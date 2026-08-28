@@ -3,7 +3,7 @@ import { Download, MoreHorizontal, Package, Pencil, Plus, Search, Trash2, Upload
 import { toast } from "sonner";
 import api, { apiError, downloadCsv } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
-import { fmtMoney, fmtNum, stockStatus } from "../lib/format";
+import { fmtBs, fmtMoney, fmtNum, stockStatus } from "../lib/format";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -18,8 +18,9 @@ import {
 const EMPTY = { name: "", sku: "", category: "", brand: "", supplier: "", purchase_price: "", sale_price: "", stock: "", min_stock: "5", max_stock: "", unit: "unidad" };
 
 export default function Productos() {
-  const { business } = useAuth();
+  const { business, isAdmin } = useAuth();
   const currency = business?.currency || "USD";
+  const [rate, setRate] = useState(null);
   const [products, setProducts] = useState(null);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("todas");
@@ -41,6 +42,10 @@ export default function Productos() {
     const t = setTimeout(load, 250);
     return () => clearTimeout(t);
   }, [load]);
+
+  useEffect(() => {
+    api.get("/rates/current").then((r) => setRate(r.data.rate)).catch(() => {});
+  }, []);
 
   const categories = [...new Set((products || []).map((p) => p.category).filter(Boolean))];
 
@@ -124,16 +129,20 @@ export default function Productos() {
           <p className="text-sm text-muted-foreground mt-1">Tu catálogo y el stock actual de cada producto.</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <input ref={fileRef} type="file" accept=".csv" className="hidden" data-testid="import-csv-file-input" onChange={doImport} />
-          <Button variant="outline" data-testid="import-csv-btn" onClick={() => fileRef.current?.click()} className="rounded-xl">
-            <Upload className="w-4 h-4 mr-1.5" /> Importar CSV
-          </Button>
-          <Button variant="outline" data-testid="export-products-csv-btn" onClick={() => downloadCsv("/products/export/csv", "productos.csv")} className="rounded-xl">
-            <Download className="w-4 h-4 mr-1.5" /> Exportar CSV
-          </Button>
-          <Button data-testid="new-product-btn" onClick={openCreate} className="rounded-xl">
-            <Plus className="w-4 h-4 mr-1.5" /> Nuevo producto
-          </Button>
+          {isAdmin && (
+            <>
+              <input ref={fileRef} type="file" accept=".csv" className="hidden" data-testid="import-csv-file-input" onChange={doImport} />
+              <Button variant="outline" data-testid="import-csv-btn" onClick={() => fileRef.current?.click()} className="rounded-xl">
+                <Upload className="w-4 h-4 mr-1.5" /> Importar CSV
+              </Button>
+              <Button variant="outline" data-testid="export-products-csv-btn" onClick={() => downloadCsv("/products/export/csv", "productos.csv")} className="rounded-xl">
+                <Download className="w-4 h-4 mr-1.5" /> Exportar CSV
+              </Button>
+              <Button data-testid="new-product-btn" onClick={openCreate} className="rounded-xl">
+                <Plus className="w-4 h-4 mr-1.5" /> Nuevo producto
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -177,7 +186,7 @@ export default function Productos() {
                   <th className="px-4 py-3 font-semibold text-right">Costo</th>
                   <th className="px-4 py-3 font-semibold text-right">Stock</th>
                   <th className="px-4 py-3 font-semibold">Estado</th>
-                  <th className="px-4 py-3" />
+                  {isAdmin && <th className="px-4 py-3" />}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -190,11 +199,15 @@ export default function Productos() {
                         <p className="text-xs text-muted-foreground font-num">{p.sku}{p.supplier ? ` · ${p.supplier}` : ""}</p>
                       </td>
                       <td className="px-4 py-3"><span className="text-xs bg-secondary px-2 py-0.5 rounded-full">{p.category}</span></td>
-                      <td className="px-4 py-3 text-right font-num font-semibold">{fmtMoney(p.sale_price, currency)}</td>
+                      <td className="px-4 py-3 text-right">
+                        <p className="font-num font-semibold">{fmtMoney(p.sale_price, currency)}</p>
+                        {rate && <p className="text-[11px] text-muted-foreground font-num">{fmtBs(p.sale_price * rate)}</p>}
+                      </td>
                       <td className="px-4 py-3 text-right font-num text-muted-foreground">{fmtMoney(p.purchase_price, currency)}</td>
-                      <td className="px-4 py-3 text-right font-num">{fmtNum(p.stock)} <span className="text-xs text-muted-foreground">/ mín {fmtNum(p.min_stock)}</span></td>
+                      <td className="px-4 py-3 text-right font-num">{fmtNum(p.stock)} <span className="text-xs text-muted-foreground">{p.unit || "unidad"} / mín {fmtNum(p.min_stock)}</span></td>
                       <td className="px-4 py-3"><span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${st.cls}`}>{st.label}</span></td>
                       <td className="px-4 py-3 text-right">
+                        {isAdmin && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <button data-testid={`product-actions-${p.id}`} className="p-1.5 rounded-lg hover:bg-secondary transition-colors">
@@ -210,6 +223,7 @@ export default function Productos() {
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
+                        )}
                       </td>
                     </tr>
                   );

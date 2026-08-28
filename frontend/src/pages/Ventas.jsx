@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Download, Plus, ShoppingCart, Trash2 } from "lucide-react";
+import { Download, Eye, Plus, ShoppingCart, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError, downloadCsv } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { fmtDateTime, fmtMoney, fmtNum, PAYMENT_METHODS } from "../lib/format";
+import ProductCombobox from "../components/ProductCombobox";
+import FacturaModal from "../components/Factura";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -23,7 +25,9 @@ export default function Ventas() {
   const [saving, setSaving] = useState(false);
   const [items, setItems] = useState([emptyItem()]);
   const [payment, setPayment] = useState("efectivo");
-  const [customer, setCustomer] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [customerRif, setCustomerRif] = useState("");
+  const [facturaDoc, setFacturaDoc] = useState(null);
 
   const load = useCallback(() => {
     api.get("/sales").then((r) => setSales(r.data.sales)).catch((e) => toast.error(apiError(e)));
@@ -37,9 +41,16 @@ export default function Ventas() {
 
   const setItem = (i, patch) => setItems(items.map((it, j) => (j === i ? { ...it, ...patch } : it)));
 
-  const pickProduct = (i, pid) => {
-    const p = products.find((x) => x.id === pid);
-    setItem(i, { product_id: pid, unit_price: p ? String(p.sale_price) : "" });
+  const addProductLine = (prod) => {
+    const idx = items.findIndex((it) => it.product_id === prod.id);
+    if (idx >= 0) {
+      setItem(idx, { quantity: String((Number(items[idx].quantity) || 0) + 1) });
+    } else {
+      const line = { product_id: prod.id, quantity: "1", unit_price: String(prod.sale_price), discount: "0" };
+      const empt = items.findIndex((it) => !it.product_id);
+      if (empt >= 0) setItem(empt, line);
+      else setItems([...items, line]);
+    }
   };
 
   const totals = items.reduce(
@@ -69,17 +80,21 @@ export default function Ventas() {
           discount: Number(it.discount) || 0,
         })),
         payment_method: payment,
-        customer: customer || null,
+        customer_name: customerName || null,
+        customer_rif: customerRif || null,
       };
       const { data } = await api.post("/sales", payload);
-      toast.success(`Venta registrada por ${fmtMoney(data.sale.total, currency)}`);
+      toast.success(`Venta ${data.sale.invoice_number || ""} registrada por ${fmtMoney(data.sale.total, currency)}`);
       (data.low_stock || []).forEach((a) =>
         toast.warning(`"${a.nombre}" quedó con ${fmtNum(a.stock)} unidades (mínimo ${fmtNum(a.min_stock)})`)
       );
       setOpen(false);
       setItems([emptyItem()]);
-      setCustomer("");
+      setCustomerName("");
+      setCustomerRif("");
+      setFacturaDoc(data.sale);
       load();
+      api.get("/products").then((r) => setProducts(r.data.products)).catch(() => {});
     } catch (err) {
       toast.error(apiError(err));
     } finally {
@@ -120,22 +135,31 @@ export default function Ventas() {
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b border-border bg-secondary/50">
                   <th className="px-5 py-3 font-semibold">Fecha</th>
+                  <th className="px-4 py-3 font-semibold">Factura</th>
                   <th className="px-4 py-3 font-semibold">Productos</th>
                   <th className="px-4 py-3 font-semibold">Pago</th>
                   <th className="px-4 py-3 font-semibold text-right">Total</th>
                   <th className="px-4 py-3 font-semibold text-right">Ganancia</th>
+                  <th className="px-4 py-3" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {sales.map((s) => (
                   <tr key={s.id} data-testid={`sale-row-${s.id}`} className="hover:bg-secondary/40 transition-colors">
                     <td className="px-5 py-3 text-muted-foreground whitespace-nowrap">{fmtDateTime(s.created_at)}</td>
+                    <td className="px-4 py-3 font-num text-xs font-semibold text-slate-700">{s.invoice_number || "—"}</td>
                     <td className="px-4 py-3 text-slate-700 max-w-md">
                       <span className="line-clamp-1">{s.items.map((i) => `${i.name} x${fmtNum(i.quantity)}`).join(", ")}</span>
                     </td>
                     <td className="px-4 py-3"><span className="text-xs bg-secondary px-2 py-0.5 rounded-full capitalize">{s.payment_method}</span></td>
                     <td className="px-4 py-3 text-right font-num font-semibold">{fmtMoney(s.total, currency)}</td>
                     <td className="px-4 py-3 text-right font-num font-semibold text-emerald-700">{fmtMoney(s.profit, currency)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <button data-testid={`sale-invoice-${s.id}`} title="Ver factura" onClick={() => setFacturaDoc(s)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-primary transition-colors">
+                        <Eye className="w-4 h-4" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -150,6 +174,11 @@ export default function Ventas() {
             <DialogTitle className="font-heading">Registrar venta</DialogTitle>
           </DialogHeader>
           <form onSubmit={save} className="space-y-4">
+            <div>
+              <Label className="text-xs mb-1.5 block">Escanear o buscar producto (agrega directo a la venta)</Label>
+              <ProductCombobox products={products} currency={currency} testid="sale-scan-input" autoFocus
+                placeholder="Escanea el código de barras o escribe el nombre…" onSelect={addProductLine} />
+            </div>
             <div className="space-y-3">
               {items.map((it, i) => {
                 const p = products.find((x) => x.id === it.product_id);
@@ -157,16 +186,18 @@ export default function Ventas() {
                   <div key={i} className="grid grid-cols-12 gap-2 items-end bg-secondary/50 rounded-xl p-3" data-testid={`sale-item-row-${i}`}>
                     <div className="col-span-12 sm:col-span-5 space-y-1">
                       <Label className="text-xs">Producto</Label>
-                      <Select value={it.product_id} onValueChange={(v) => pickProduct(i, v)}>
-                        <SelectTrigger data-testid={`sale-item-product-${i}`}><SelectValue placeholder="Elige producto" /></SelectTrigger>
-                        <SelectContent>
-                          {products.map((pr) => (
-                            <SelectItem key={pr.id} value={pr.id}>
-                              {pr.name} · {fmtNum(pr.stock)} disp.
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      {p ? (
+                        <div className="flex items-center gap-2 bg-card border border-border rounded-lg px-2.5 py-2" data-testid={`sale-item-product-${i}`}>
+                          <span className="text-sm flex-1 truncate font-medium">{p.name}</span>
+                          <button type="button" data-testid={`sale-item-clear-${i}`} onClick={() => setItem(i, { product_id: "" })}
+                            className="text-slate-400 hover:text-rose-600 transition-colors">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <ProductCombobox products={products} currency={currency} testid={`sale-item-search-${i}`}
+                          placeholder="Buscar producto…" onSelect={(prod) => setItem(i, { product_id: prod.id, unit_price: String(prod.sale_price) })} />
+                      )}
                       {p && Number(it.quantity) > p.stock && (
                         <p className="text-[11px] text-rose-600 font-medium">Solo hay {fmtNum(p.stock)} disponibles</p>
                       )}
@@ -214,7 +245,11 @@ export default function Ventas() {
               </div>
               <div className="space-y-1.5">
                 <Label>Cliente (opcional)</Label>
-                <Input data-testid="sale-customer-input" value={customer} onChange={(e) => setCustomer(e.target.value)} placeholder="Ej. Juan Pérez" />
+                <Input data-testid="sale-customer-input" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Nombre o razón social" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>RIF / CI del cliente</Label>
+                <Input data-testid="sale-customer-rif-input" value={customerRif} onChange={(e) => setCustomerRif(e.target.value)} placeholder="V-12345678" />
               </div>
             </div>
 
@@ -238,6 +273,8 @@ export default function Ventas() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <FacturaModal open={!!facturaDoc} onClose={() => setFacturaDoc(null)} kind="venta" doc={facturaDoc} business={business} />
     </div>
   );
 }

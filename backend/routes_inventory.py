@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from database import db
 from models import MovementIn
 from routes_products import _csv_response
-from security import new_id, now_iso, require_business
+from security import new_id, now_iso, require_business, require_roles
 from pymongo import ReturnDocument
 
 router = APIRouter(tags=["inventory"])
@@ -76,7 +76,7 @@ async def create_movement(data: MovementIn, user: dict = Depends(require_busines
 
 
 @router.get("/movements/export/csv")
-async def export_movements(user: dict = Depends(require_business)):
+async def export_movements(user: dict = Depends(require_roles("propietario", "administrador"))):
     movements = await db.inventory_movements.find({"business_id": user["business_id"]}, {"_id": 0}).sort("created_at", -1).to_list(20000)
     rows = [
         [m["created_at"][:10], m["product_name"], m["type"], m["reason"], m["quantity"], m.get("stock_after", ""), m.get("user_email", ""), m.get("notes") or ""]

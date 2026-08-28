@@ -6,6 +6,16 @@ export const useAuth = () => useContext(AuthCtx);
 
 export function AuthProvider({ children }) {
   const [state, setState] = useState({ status: "loading", user: null, business: null });
+  const [rate, setRate] = useState(null);
+
+  const refreshRate = useCallback(async () => {
+    try {
+      const { data } = await api.get("/rates/current");
+      setRate(data.rate ? data : null);
+    } catch {
+      setRate(null);
+    }
+  }, []);
 
   useEffect(() => {
     api
@@ -13,6 +23,10 @@ export function AuthProvider({ children }) {
       .then((r) => setState({ status: "authed", user: r.data.user, business: r.data.business }))
       .catch(() => setState({ status: "guest", user: null, business: null }));
   }, []);
+
+  useEffect(() => {
+    if (state.status === "authed" && state.business) refreshRate();
+  }, [state.status, state.business, refreshRate]);
 
   const apply = (data) => setState({ status: "authed", user: data.user, business: data.business });
 
@@ -45,6 +59,12 @@ export function AuthProvider({ children }) {
         status: state.status,
         user: state.user,
         business: state.business,
+        role: state.user?.role || "propietario",
+        isOwner: (state.user?.role || "propietario") === "propietario",
+        isAdmin: ["propietario", "administrador"].includes(state.user?.role || "propietario"),
+        isSuper: state.user?.platform_role === "superadmin",
+        rate,
+        refreshRate,
         login,
         register,
         logout,

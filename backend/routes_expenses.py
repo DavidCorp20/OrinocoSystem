@@ -6,21 +6,22 @@ from fastapi import APIRouter, Depends, HTTPException
 from database import db
 from models import ExpenseIn
 from routes_products import _csv_response
-from security import new_id, now_iso, require_business
+from security import new_id, now_iso, require_roles
 
 router = APIRouter(tags=["expenses"])
 
 CATEGORIES = {"alquiler", "servicios", "personal", "transporte", "marketing", "otros"}
+MANAGER = Depends(require_roles("propietario", "administrador"))
 
 
 @router.get("/expenses")
-async def list_expenses(user: dict = Depends(require_business)):
+async def list_expenses(user: dict = MANAGER):
     expenses = await db.expenses.find({"business_id": user["business_id"]}, {"_id": 0}).sort("created_at", -1).to_list(500)
     return {"expenses": expenses}
 
 
 @router.post("/expenses")
-async def create_expense(data: ExpenseIn, user: dict = Depends(require_business)):
+async def create_expense(data: ExpenseIn, user: dict = MANAGER):
     if data.category not in CATEGORIES:
         raise HTTPException(status_code=400, detail="Categoría inválida")
     expense = {
@@ -39,7 +40,7 @@ async def create_expense(data: ExpenseIn, user: dict = Depends(require_business)
 
 
 @router.delete("/expenses/{expense_id}")
-async def delete_expense(expense_id: str, user: dict = Depends(require_business)):
+async def delete_expense(expense_id: str, user: dict = MANAGER):
     result = await db.expenses.delete_one({"id": expense_id, "business_id": user["business_id"]})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Gasto no encontrado")
@@ -47,7 +48,7 @@ async def delete_expense(expense_id: str, user: dict = Depends(require_business)
 
 
 @router.get("/expenses/export/csv")
-async def export_expenses(from_date: Optional[str] = None, to_date: Optional[str] = None, user: dict = Depends(require_business)):
+async def export_expenses(from_date: Optional[str] = None, to_date: Optional[str] = None, user: dict = MANAGER):
     query = {"business_id": user["business_id"]}
     if from_date:
         query["created_at"] = {"$gte": from_date}
@@ -59,7 +60,7 @@ async def export_expenses(from_date: Optional[str] = None, to_date: Optional[str
 
 
 @router.get("/finances/summary")
-async def finances_summary(user: dict = Depends(require_business)):
+async def finances_summary(user: dict = MANAGER):
     bid = user["business_id"]
     now = datetime.now(timezone.utc)
     d30 = now - timedelta(days=30)

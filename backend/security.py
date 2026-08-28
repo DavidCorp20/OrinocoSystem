@@ -12,6 +12,8 @@ JWT_ALGORITHM = "HS256"
 ACCESS_MINUTES = 15
 REFRESH_DAYS = 7
 
+ALL_TENANT_ROLES = ("propietario", "administrador", "vendedor")
+
 
 def new_id() -> str:
     return str(uuid.uuid4())
@@ -65,6 +67,8 @@ def public_user(user: dict) -> dict:
         "id": user["id"],
         "email": user["email"],
         "name": user.get("name", ""),
+        "role": user.get("role", "propietario"),
+        "platform_role": user.get("platform_role"),
         "business_id": user.get("business_id"),
         "created_at": user.get("created_at"),
     }
@@ -92,7 +96,28 @@ async def get_current_user(request: Request) -> dict:
     return user
 
 
-async def require_business(user: dict = Depends(get_current_user)) -> dict:
+async def _check_tenant(user: dict, roles: tuple) -> dict:
     if not user.get("business_id"):
         raise HTTPException(status_code=400, detail="Primero completa el registro de tu negocio")
+    business = await db.businesses.find_one({"id": user["business_id"]}, {"_id": 0, "active": 1})
+    if business and business.get("active") is False:
+        raise HTTPException(status_code=403, detail="Tu cuenta está deshabilitada. Contacta al soporte de ControlPyme.")
+    if user.get("role", "propietario") not in roles:
+        raise HTTPException(status_code=403, detail="No tienes permiso para realizar esta acción")
+    return user
+
+
+async def require_business(user: dict = Depends(get_current_user)) -> dict:
+    return await _check_tenant(user, ALL_TENANT_ROLES)
+
+
+def require_roles(*roles: str):
+    async def dep(user: dict = Depends(get_current_user)) -> dict:
+        return await _check_tenant(user, roles)
+    return dep
+
+
+async def require_superadmin(user: dict = Depends(get_current_user)) -> dict:
+    if user.get("platform_role") != "superadmin":
+        raise HTTPException(status_code=403, detail="Solo el administrador de la plataforma")
     return user

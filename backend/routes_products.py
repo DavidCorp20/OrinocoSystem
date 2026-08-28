@@ -7,11 +7,12 @@ from fastapi.responses import StreamingResponse
 
 from database import db
 from models import ProductIn
-from security import new_id, now_iso, require_business
+from security import new_id, now_iso, require_business, require_roles
 
 router = APIRouter(tags=["products"])
 
 PRODUCT_FIELDS = {"_id": 0}
+MANAGER = Depends(require_roles("propietario", "administrador"))
 
 
 def _csv_response(rows, headers, filename):
@@ -44,7 +45,7 @@ async def list_products(search: Optional[str] = None, category: Optional[str] = 
 
 
 @router.post("/products")
-async def create_product(data: ProductIn, user: dict = Depends(require_business)):
+async def create_product(data: ProductIn, user: dict = MANAGER):
     bid = user["business_id"]
     count = await db.products.count_documents({"business_id": bid})
     product = {
@@ -77,7 +78,7 @@ async def create_product(data: ProductIn, user: dict = Depends(require_business)
 
 
 @router.put("/products/{product_id}")
-async def update_product(product_id: str, data: ProductIn, user: dict = Depends(require_business)):
+async def update_product(product_id: str, data: ProductIn, user: dict = MANAGER):
     bid = user["business_id"]
     product = await db.products.find_one({"id": product_id, "business_id": bid})
     if not product:
@@ -91,7 +92,7 @@ async def update_product(product_id: str, data: ProductIn, user: dict = Depends(
 
 
 @router.delete("/products/{product_id}")
-async def delete_product(product_id: str, user: dict = Depends(require_business)):
+async def delete_product(product_id: str, user: dict = MANAGER):
     result = await db.products.delete_one({"id": product_id, "business_id": user["business_id"]})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
@@ -99,7 +100,7 @@ async def delete_product(product_id: str, user: dict = Depends(require_business)
 
 
 @router.get("/products/export/csv")
-async def export_products(user: dict = Depends(require_business)):
+async def export_products(user: dict = MANAGER):
     products = await db.products.find({"business_id": user["business_id"]}, PRODUCT_FIELDS).sort("name", 1).to_list(10000)
     rows = [
         [p["name"], p.get("sku", ""), p.get("category", ""), p.get("brand") or "", p.get("supplier") or "",
@@ -111,7 +112,7 @@ async def export_products(user: dict = Depends(require_business)):
 
 
 @router.post("/products/import")
-async def import_products(file: UploadFile = File(...), user: dict = Depends(require_business)):
+async def import_products(file: UploadFile = File(...), user: dict = MANAGER):
     content = (await file.read()).decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(content))
     bid = user["business_id"]

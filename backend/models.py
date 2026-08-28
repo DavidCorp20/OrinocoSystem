@@ -28,6 +28,21 @@ class BusinessIn(BaseModel):
     initial_products: List[InitialProduct] = []
 
 
+class SettingsIn(BaseModel):
+    rif: Optional[str] = Field(default=None, max_length=20)
+    address: Optional[str] = Field(default=None, max_length=200)
+    phone: Optional[str] = Field(default=None, max_length=30)
+    bcv_mode: Optional[str] = None  # auto | manual
+    bcv_rate: Optional[float] = Field(default=None, gt=0)
+
+
+class TeamUserIn(BaseModel):
+    name: str = Field(min_length=2, max_length=80)
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+    role: str  # administrador | vendedor
+
+
 class ProductIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     sku: Optional[str] = None
@@ -61,7 +76,8 @@ class SaleItemIn(BaseModel):
 class SaleIn(BaseModel):
     items: List[SaleItemIn] = Field(min_length=1)
     payment_method: str = "efectivo"
-    customer: Optional[str] = None
+    customer_name: Optional[str] = None
+    customer_rif: Optional[str] = None
 
 
 class PurchaseItemIn(BaseModel):
@@ -72,6 +88,7 @@ class PurchaseItemIn(BaseModel):
 
 class PurchaseIn(BaseModel):
     supplier: Optional[str] = None
+    supplier_rif: Optional[str] = None
     items: List[PurchaseItemIn] = Field(min_length=1)
     payment_method: str = "efectivo"
     status: str = "completada"
@@ -86,3 +103,14 @@ class ExpenseIn(BaseModel):
 
 class ChatIn(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
+
+
+class BusinessStatusIn(BaseModel):
+    active: bool
+
+
+class PlatformExpenseIn(BaseModel):
+    category: str
+    description: str = Field(min_length=1, max_length=200)
+    amount: float = Field(gt=0)
+    date: Optional[str] = None

@@ -5,83 +5,155 @@ from datetime import datetime, time, timedelta, timezone
 from database import db
 from security import hash_password, new_id, now_iso, verify_password
 
-DEMO_PRODUCTS = [
-    ("Martillo de carpintero 16oz", "Herramientas", "Ferreimport SA", 6.5, 12.0, 8, 60),
-    ("Juego de destornilladores 6 pzs", "Herramientas", "Ferreimport SA", 4.0, 8.5, 6, 45),
-    ("Cinta métrica 5m", "Herramientas", "Distribuidora López", 2.2, 5.0, 6, 50),
-    ("Taladro percutor 650W", "Herramientas eléctricas", "Ferreimport SA", 38.0, 65.0, 3, 20),
-    ("Pintura látex blanca 1gal", "Pinturas", "Pinturas del Norte", 11.0, 19.0, 6, 40),
-    ("Brocha 4 pulgadas", "Pinturas", "Pinturas del Norte", 1.1, 2.5, 10, 80),
-    ("Cemento gris 42.5kg", "Construcción", "Distribuidora López", 6.8, 9.5, 10, 70),
-    ("Cable THW calibre 12 (metro)", "Electricidad", "Ferreimport SA", 0.35, 0.7, 50, 300),
-    ("Bombillo LED 9W", "Electricidad", "Distribuidora López", 0.9, 2.2, 15, 120),
-    ("Tubería PVC 1/2 pulgada 3m", "Fontanería", "Distribuidora López", 1.6, 3.4, 8, 60),
-    ("Pegamento PVC 1/4 galón", "Fontanería", "Distribuidora López", 2.8, 5.5, 5, 35),
-    ("Candado de acero 50mm", "Seguridad", "Ferreimport SA", 3.2, 6.8, 5, 40),
-]
+DEMO_PASSWORD = "Demo2026!"
 
-DEMO_EXPENSES = [
-    ("alquiler", "Alquiler del local", 400.0, 27),
-    ("alquiler", "Alquiler del local", 400.0, 2),
-    ("servicios", "Luz y agua", 95.0, 20),
-    ("personal", "Pago ayudante (quincena)", 175.0, 16),
-    ("personal", "Pago ayudante (quincena)", 175.0, 3),
-    ("transporte", "Flete de mercancía", 40.0, 12),
-    ("transporte", "Flete de mercancía", 40.0, 5),
-    ("marketing", "Volantes promocionales", 60.0, 9),
-]
+FERRETERIA = {
+    "name": "Ferretería El Candado",
+    "type": "ferreteria",
+    "products": [
+        ("Martillo de carpintero 16oz", "Herramientas", "Ferreimport SA", 6.5, 12.0, 8, 60, "unidad"),
+        ("Juego de destornilladores 6 pzs", "Herramientas", "Ferreimport SA", 4.0, 8.5, 6, 45, "unidad"),
+        ("Cinta métrica 5m", "Herramientas", "Distribuidora López", 2.2, 5.0, 6, 50, "unidad"),
+        ("Taladro percutor 650W", "Herramientas eléctricas", "Ferreimport SA", 38.0, 65.0, 3, 20, "unidad"),
+        ("Pintura látex blanca 1gal", "Pinturas", "Pinturas del Norte", 11.0, 19.0, 6, 40, "unidad"),
+        ("Brocha 4 pulgadas", "Pinturas", "Pinturas del Norte", 1.1, 2.5, 10, 80, "unidad"),
+        ("Cemento gris 42.5kg", "Construcción", "Distribuidora López", 6.8, 9.5, 10, 70, "unidad"),
+        ("Cable THW calibre 12 (metro)", "Electricidad", "Ferreimport SA", 0.35, 0.7, 50, 300, "metro"),
+        ("Bombillo LED 9W", "Electricidad", "Distribuidora López", 0.9, 2.2, 15, 120, "unidad"),
+        ("Tubería PVC 1/2 pulgada 3m", "Fontanería", "Distribuidora López", 1.6, 3.4, 8, 60, "unidad"),
+        ("Pegamento PVC 1/4 galón", "Fontanería", "Distribuidora López", 2.8, 5.5, 5, 35, "unidad"),
+        ("Candado de acero 50mm", "Seguridad", "Ferreimport SA", 3.2, 6.8, 5, 40, "unidad"),
+    ],
+    "expenses": [
+        ("alquiler", "Alquiler del local", 400.0, 27), ("alquiler", "Alquiler del local", 400.0, 2),
+        ("servicios", "Luz y agua", 95.0, 20), ("personal", "Pago ayudante (quincena)", 175.0, 16),
+        ("personal", "Pago ayudante (quincena)", 175.0, 3), ("transporte", "Flete de mercancía", 40.0, 12),
+        ("transporte", "Flete de mercancía", 40.0, 5), ("marketing", "Volantes promocionales", 60.0, 9),
+    ],
+}
 
-PAYMENTS = ["efectivo", "efectivo", "efectivo", "tarjeta", "transferencia"]
+KIOSCO = {
+    "name": "Kiosco La Esquina",
+    "type": "abarrotes",
+    "products": [
+        ("Harina P.A.N. blanca 1kg", "Alimentos", "Alimentos Polar CA", 0.95, 1.30, 15, 80, "unidad"),
+        ("Arroz Mary 1kg", "Alimentos", "Distribuidora Makro", 1.05, 1.45, 15, 70, "unidad"),
+        ("Malta Maltín Polar 330ml", "Bebidas", "Alimentos Polar CA", 0.55, 0.85, 24, 96, "unidad"),
+        ("Refresco Frescolita 2L", "Bebidas", "Distribuidora Makro", 1.40, 1.95, 12, 48, "unidad"),
+        ("Café Fama de América 250g", "Alimentos", "Distribuidora Makro", 3.10, 4.25, 8, 32, "unidad"),
+        ("Azúcar refinada 1kg", "Alimentos", "Distribuidora Makro", 0.90, 1.25, 12, 60, "unidad"),
+        ("Aceite de girasol 1L", "Alimentos", "Distribuidora Makro", 2.60, 3.40, 10, 40, "unidad"),
+        ("Leche en polvo 400g", "Alimentos", "Distribuidora Makro", 4.20, 5.50, 6, 24, "unidad"),
+        ("Atún en lata 140g", "Enlatados", "Distribuidora Makro", 1.15, 1.65, 10, 50, "unidad"),
+        ("Pasta spaghetti 1kg", "Alimentos", "Distribuidora Makro", 1.05, 1.50, 10, 45, "unidad"),
+        ("Sardina en lata 170g", "Enlatados", "Distribuidora Makro", 0.95, 1.35, 10, 40, "unidad"),
+        ("Galletas María Puig (paquete)", "Dulces", "Distribuidora Makro", 0.85, 1.25, 12, 48, "unidad"),
+    ],
+    "expenses": [
+        ("alquiler", "Alquiler del kiosco", 250.0, 26), ("servicios", "Luz", 60.0, 18),
+        ("personal", "Pago cajera (quincena)", 150.0, 15), ("personal", "Pago cajera (quincena)", 150.0, 1),
+        ("transporte", "Flete desde mayorista", 25.0, 10), ("otros", "Bolsas y empaques", 30.0, 7),
+    ],
+}
+
+VERDULERIA = {
+    "name": "Verdulería Doña Rosa",
+    "type": "alimentos",
+    "products": [
+        ("Tomate", "Verduras", "Mercado Mayorista Coche", 0.80, 1.30, 8, 40, "kg"),
+        ("Cebolla", "Verduras", "Mercado Mayorista Coche", 0.70, 1.15, 8, 40, "kg"),
+        ("Papa", "Verduras", "Mercado Mayorista Coche", 0.60, 1.00, 10, 50, "kg"),
+        ("Zanahoria", "Verduras", "Mercado Mayorista Coche", 0.55, 0.95, 6, 30, "kg"),
+        ("Pimentón", "Verduras", "Mercado Mayorista Coche", 1.20, 1.90, 4, 15, "kg"),
+        ("Yuca", "Verduras", "Mercado Mayorista Coche", 0.50, 0.85, 8, 35, "kg"),
+        ("Plátano", "Frutas", "Mercado Mayorista Coche", 0.65, 1.10, 6, 25, "kg"),
+        ("Cambur", "Frutas", "Mercado Mayorista Coche", 0.75, 1.25, 6, 30, "kg"),
+        ("Lechosa", "Frutas", "Mercado Mayorista Coche", 0.90, 1.50, 3, 12, "kg"),
+        ("Aguacate", "Frutas", "Mercado Mayorista Coche", 1.40, 2.30, 4, 15, "unidad"),
+        ("Limón", "Frutas", "Mercado Mayorista Coche", 0.60, 1.00, 5, 20, "kg"),
+        ("Cilantro (manojo)", "Hierbas", "Mercado Mayorista Coche", 0.30, 0.60, 6, 30, "manojo"),
+    ],
+    "expenses": [
+        ("alquiler", "Puesto en el mercado", 180.0, 25), ("servicios", "Luz y agua", 45.0, 19),
+        ("transporte", "Viaje al mayorista", 35.0, 14), ("transporte", "Viaje al mayorista", 35.0, 4),
+        ("personal", "Ayudante semanal", 60.0, 8), ("otros", "Bolsas y bandejas", 20.0, 6),
+    ],
+}
+
+REPUESTOS = {
+    "name": "Repuestos El Pistón",
+    "type": "otro",
+    "products": [
+        ("Filtro de aceite sincrónico", "Filtros", "Importadora AutoPartes", 4.50, 7.90, 6, 25, "unidad"),
+        ("Filtro de aire", "Filtros", "Importadora AutoPartes", 5.20, 9.00, 5, 20, "unidad"),
+        ("Pastillas de freno delanteras", "Frenos", "Distribuidora El Motor", 11.00, 18.50, 4, 16, "juego"),
+        ("Líquido de frenos DOT3", "Frenos", "Distribuidora El Motor", 2.80, 4.90, 6, 24, "unidad"),
+        ("Bujía NGK", "Encendido", "Importadora AutoPartes", 1.90, 3.40, 8, 40, "unidad"),
+        ("Correa de distribución", "Motor", "Distribuidora El Motor", 8.50, 14.90, 3, 12, "unidad"),
+        ("Aceite 20W-50 (galón)", "Lubricantes", "Distribuidora El Motor", 13.50, 19.90, 6, 24, "unidad"),
+        ("Batería 12V 600A", "Eléctrico", "Importadora AutoPartes", 52.00, 74.90, 2, 8, "unidad"),
+        ("Bombillo H4 12V", "Eléctrico", "Importadora AutoPartes", 2.20, 3.90, 8, 30, "unidad"),
+        ("Espejo retrovisor lateral", "Carrocería", "Distribuidora El Motor", 9.80, 16.50, 3, 10, "unidad"),
+        ("Limpiaparabrisas 22 pulgadas", "Carrocería", "Distribuidora El Motor", 3.10, 5.50, 6, 22, "unidad"),
+        ("Refrigerante verde (galón)", "Lubricantes", "Distribuidora El Motor", 6.40, 10.90, 5, 20, "unidad"),
+    ],
+    "expenses": [
+        ("alquiler", "Alquiler del local", 350.0, 27), ("servicios", "Luz e internet", 80.0, 21),
+        ("personal", "Pago vendedor (quincena)", 250.0, 16), ("personal", "Pago vendedor (quincena)", 250.0, 2),
+        ("marketing", "Publicidad Instagram", 40.0, 11),
+    ],
+}
+
+PAYMENTS = ["efectivo", "efectivo", "efectivo", "tarjeta", "transferencia", "pago móvil"]
 
 
-async def seed_admin():
-    email = os.environ.get("ADMIN_EMAIL")
-    password = os.environ.get("ADMIN_PASSWORD")
-    if not email or not password:
-        return None
+async def _ensure_user(email: str, name: str, password: str, role="propietario", platform_role=None):
     existing = await db.users.find_one({"email": email})
     if not existing:
         user = {
-            "id": new_id(),
-            "email": email,
-            "name": "David Arenas",
-            "password_hash": hash_password(password),
-            "business_id": None,
-            "created_at": now_iso(),
+            "id": new_id(), "email": email, "name": name, "password_hash": hash_password(password),
+            "role": role, "platform_role": platform_role, "business_id": None, "created_at": now_iso(),
         }
         await db.users.insert_one(user)
         return user
+    updates = {}
     if not verify_password(password, existing["password_hash"]):
-        await db.users.update_one({"email": email}, {"$set": {"password_hash": hash_password(password)}})
-    return existing
+        updates["password_hash"] = hash_password(password)
+    if existing.get("role") != role:
+        updates["role"] = role
+    if existing.get("platform_role") != platform_role:
+        updates["platform_role"] = platform_role
+    if updates:
+        await db.users.update_one({"email": email}, {"$set": updates})
+    return await db.users.find_one({"email": email})
 
 
-async def seed_demo_business(user):
+async def _seed_profile(user, profile, rng_seed):
     if not user or user.get("business_id"):
         return
-    rng = random.Random(7)
+    rng = random.Random(rng_seed)
     bid = new_id()
     now = datetime.now(timezone.utc)
 
     await db.businesses.insert_one({
-        "id": bid,
-        "owner_id": user["id"],
-        "name": "Ferretería El Candado",
-        "type": "ferreteria",
-        "currency": "USD",
+        "id": bid, "owner_id": user["id"], "name": profile["name"], "type": profile["type"],
+        "currency": "USD", "active": True, "bcv_mode": "auto", "bcv_rate": None,
+        "rif": f"J-{rng.randint(10000000, 49999999)}-{rng.randint(0, 9)}",
+        "address": "Venezuela", "phone": None,
         "created_at": (now - timedelta(days=32)).isoformat(),
     })
     await db.users.update_one({"id": user["id"]}, {"$set": {"business_id": bid}})
 
     products = []
     stock_map = {}
-    for i, (name, cat, sup, cost, price, min_stock, initial) in enumerate(DEMO_PRODUCTS):
+    for i, (name, cat, sup, cost, price, min_stock, initial, unit) in enumerate(profile["products"]):
         pid = new_id()
         products.append({
             "id": pid, "business_id": bid, "name": name, "sku": f"P-{i + 1:04d}",
-            "barcode": None, "category": cat, "brand": None, "supplier": sup,
+            "barcode": f"775{rng.randint(1000000000, 9999999999)}",
+            "category": cat, "brand": None, "supplier": sup,
             "purchase_price": cost, "sale_price": price, "stock": initial,
-            "min_stock": min_stock, "max_stock": None, "unit": "unidad", "status": "activo",
+            "min_stock": min_stock, "max_stock": None, "unit": unit, "status": "activo",
             "created_at": (now - timedelta(days=31)).isoformat(), "updated_at": now_iso(),
         })
         stock_map[pid] = initial
@@ -142,7 +214,7 @@ async def seed_demo_business(user):
             sales_docs.append({
                 "id": new_id(), "business_id": bid, "items": items, "total": total,
                 "cost_total": cost_total, "profit": round(total - cost_total, 2),
-                "payment_method": rng.choice(PAYMENTS), "customer": None,
+                "payment_method": rng.choice(PAYMENTS), "customer_name": None, "customer_rif": None,
                 "user_email": user["email"], "created_at": created,
             })
     if sales_docs:
@@ -170,9 +242,9 @@ async def seed_demo_business(user):
                 "notes": "Compra (demo)", "created_at": created,
             })
         purchase_docs.append({
-            "id": new_id(), "business_id": bid, "supplier": p["supplier"], "items": items,
-            "total": round(total, 2), "payment_method": "transferencia", "status": "completada",
-            "user_email": user["email"], "created_at": created,
+            "id": new_id(), "business_id": bid, "supplier": p["supplier"], "supplier_rif": None,
+            "items": items, "total": round(total, 2), "payment_method": "transferencia",
+            "status": "completada", "user_email": user["email"], "created_at": created,
         })
     if purchase_docs:
         await db.purchases.insert_many(purchase_docs)
@@ -181,13 +253,13 @@ async def seed_demo_business(user):
         "id": new_id(), "business_id": bid, "category": cat, "description": desc, "amount": amount,
         "date": (now - timedelta(days=days_ago)).date().isoformat(), "user_email": user["email"],
         "created_at": ts(days_ago, 18),
-    } for cat, desc, amount, days_ago in DEMO_EXPENSES]
+    } for cat, desc, amount, days_ago in profile["expenses"]]
     await db.expenses.insert_many(expense_docs)
 
-    # Forzar escenario de semáforo: un agotado y dos con stock bajo
-    stock_map[products[10]["id"]] = 0   # Pegamento PVC agotado
-    stock_map[products[3]["id"]] = 2    # Taladro bajo mínimo
-    stock_map[products[4]["id"]] = 4    # Pintura bajo mínimo
+    # Escenario de semáforo: un agotado y dos con stock bajo
+    stock_map[products[10]["id"]] = 0
+    stock_map[products[3]["id"]] = 2
+    stock_map[products[4]["id"]] = 4
     for p in products:
         await db.products.update_one({"id": p["id"]}, {"$set": {"stock": stock_map[p["id"]]}})
 
@@ -196,5 +268,23 @@ async def seed_demo_business(user):
 
 
 async def seed_all():
-    admin = await seed_admin()
-    await seed_demo_business(admin)
+    admin_email = os.environ.get("ADMIN_EMAIL")
+    admin_password = os.environ.get("ADMIN_PASSWORD")
+    if admin_email and admin_password:
+        admin = await _ensure_user(admin_email, "David Arenas", admin_password, role="propietario", platform_role="superadmin")
+        await _seed_profile(admin, FERRETERIA, 7)
+
+    demo_profiles = [
+        ("kiosco.demo@controlpyme.com", "Luis Martínez", KIOSCO, 21),
+        ("verduleria.demo@controlpyme.com", "Rosa Jiménez", VERDULERIA, 33),
+        ("repuestos.demo@controlpyme.com", "Carlos Pirela", REPUESTOS, 47),
+    ]
+    for email, name, profile, rng_seed in demo_profiles:
+        user = await _ensure_user(email, name, DEMO_PASSWORD)
+        await _seed_profile(user, profile, rng_seed)
+
+    # Backfill idempotente: negocios antiguos sin 'active' y productos sin código de barras
+    await db.businesses.update_many({"active": {"$exists": False}}, {"$set": {"active": True}})
+    rng = random.Random(99)
+    async for p in db.products.find({"barcode": None}, {"id": 1}):
+        await db.products.update_one({"id": p["id"]}, {"$set": {"barcode": f"775{rng.randint(1000000000, 9999999999)}"}})

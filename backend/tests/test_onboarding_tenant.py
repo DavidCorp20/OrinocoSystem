@@ -1,7 +1,33 @@
 """Onboarding (register -> create business) and multi-tenant isolation."""
+import asyncio
+
+import pytest
 import requests
+from dotenv import dotenv_values
+from motor.motor_asyncio import AsyncIOMotorClient
 
 from conftest import API, new_email
+
+
+@pytest.fixture(scope="module", autouse=True)
+def cleanup_test_tenants():
+    """Remove TEST_ tenants (and their data) created by this module so the
+    platform overview / KPIs stay clean for the demo accounts."""
+    yield
+
+    async def _purge():
+        env = dotenv_values("/app/backend/.env")
+        client = AsyncIOMotorClient(env["MONGO_URL"])
+        db = client[env["DB_NAME"]]
+        biz_ids = [b["id"] for b in await db.businesses.find({"name": {"$regex": "^TEST_"}}, {"_id": 0, "id": 1}).to_list(500)]
+        if biz_ids:
+            for coll in ("products", "sales", "purchases", "expenses", "inventory_movements", "users", "clients"):
+                await db[coll].delete_many({"business_id": {"$in": biz_ids}})
+            await db.businesses.delete_many({"id": {"$in": biz_ids}})
+        await db.users.delete_many({"business_id": None, "email": {"$regex": "^onb"}})
+        client.close()
+
+    asyncio.run(_purge())
 
 
 class TestOnboardingAndTenant:
