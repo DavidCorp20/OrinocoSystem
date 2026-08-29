@@ -1,5 +1,6 @@
 """Onboarding (register -> create business) and multi-tenant isolation."""
 import asyncio
+from pathlib import Path
 
 import pytest
 import requests
@@ -16,9 +17,12 @@ def cleanup_test_tenants():
     yield
 
     async def _purge():
-        env = dotenv_values("/app/backend/.env")
-        client = AsyncIOMotorClient(env["MONGO_URL"])
-        db = client[env["DB_NAME"]]
+        env_path = Path(__file__).resolve().parents[2] / "backend" / ".env"
+        env = dotenv_values(env_path)
+        mongo_url = env.get("MONGO_URL", "mongodb://127.0.0.1:27017")
+        db_name = env.get("DB_NAME", "controlpyme")
+        client = AsyncIOMotorClient(mongo_url)
+        db = client[db_name]
         biz_ids = [b["id"] for b in await db.businesses.find({"name": {"$regex": "^TEST_"}}, {"_id": 0, "id": 1}).to_list(500)]
         if biz_ids:
             for coll in ("products", "sales", "purchases", "expenses", "inventory_movements", "users", "clients"):

@@ -80,22 +80,25 @@ let webpackConfig = {
     },
   },
   webpack: {
-    alias: {
-      '@': path.resolve(__dirname, 'src'),
-    },
     configure: (webpackConfig) => {
 
       // Add ignored patterns to reduce watched directories
-        webpackConfig.watchOptions = {
-          ...webpackConfig.watchOptions,
-          ignored: [
-            '**/node_modules/**',
-            '**/.git/**',
-            '**/build/**',
-            '**/dist/**',
-            '**/coverage/**',
-            '**/public/**',
+      webpackConfig.watchOptions = {
+        ...webpackConfig.watchOptions,
+        ignored: [
+          '**/node_modules/**',
+          '**/.git/**',
+          '**/build/**',
+          '**/dist/**',
+          '**/coverage/**',
+          '**/public/**',
         ],
+      };
+
+      webpackConfig.resolve = webpackConfig.resolve || {};
+      webpackConfig.resolve.alias = {
+        ...(webpackConfig.resolve.alias || {}),
+        '@': path.resolve(__dirname, 'src'),
       };
 
       // Add health check plugin to webpack if enabled
@@ -143,6 +146,17 @@ if (isDevServer) {
     }
   }
 }
+
+webpackConfig.webpack = webpackConfig.webpack || {};
+webpackConfig.webpack.alias = {
+  ...(webpackConfig.webpack.alias || {}),
+  '@': path.resolve(__dirname, 'src'),
+};
+webpackConfig.webpack.resolve = webpackConfig.webpack.resolve || {};
+webpackConfig.webpack.resolve.alias = {
+  ...(webpackConfig.webpack.resolve.alias || {}),
+  '@': path.resolve(__dirname, 'src'),
+};
 
 const configureDevServer = webpackConfig.devServer;
 webpackConfig.devServer = (devServerConfig) =>

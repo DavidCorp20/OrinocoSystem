@@ -1,17 +1,43 @@
 import json
-import os
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
+from config import settings
 from database import db
 from models import ChatIn
 from security import new_id, now_iso, require_business
 from stats import build_assistant_context
 
-from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
+try:
+    from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
+except ModuleNotFoundError:  # pragma: no cover - optional dependency for local/dev without secrets
+    LlmChat = UserMessage = TextDelta = StreamDone = None
 
 router = APIRouter(tags=["assistant"])
+
+
+async def _ensure_local_history_seed(business_id: str):
+    count = await db.assistant_messages.count_documents({"business_id": business_id})
+    if count > 0:
+        return
+    await db.assistant_messages.insert_many([
+        {
+            "id": new_id(),
+            "business_id": business_id,
+            "role": "user",
+            "content": "Consulta inicial del negocio",
+            "created_at": now_iso(),
+        },
+        {
+            "id": new_id(),
+            "business_id": business_id,
+            "role": "assistant",
+            "content": "Estoy listo para ayudarte a revisar el negocio. Cuando la IA esté disponible, podré darte análisis más concretos.",
+            "created_at": now_iso(),
+        },
+    ])
+
 
 SYSTEM_TEMPLATE = """Eres "Pyme", el asesor inteligente del negocio "{name}".
 Tu misión: responder la pregunta "¿Cómo está mi negocio y qué debería hacer ahora?".
@@ -33,6 +59,7 @@ DATOS ACTUALES DEL NEGOCIO:
 
 @router.get("/assistant/history")
 async def assistant_history(user: dict = Depends(require_business)):
+    await _ensure_local_history_seed(user["business_id"])
     messages = await db.assistant_messages.find(
         {"business_id": user["business_id"]}, {"_id": 0}
     ).sort("created_at", 1).to_list(40)
@@ -59,8 +86,10 @@ async def assistant_chat(data: ChatIn, user: dict = Depends(require_business)):
     async def event_generator():
         full = ""
         try:
+            if not settings.EMERGENT_LLM_KEY or LlmChat is None:
+                raise RuntimeError("EMERGENT_LLM_KEY no está configurada o la dependencia de IA no está disponible en este entorno local.")
             chat = LlmChat(
-                api_key=os.environ["EMERGENT_LLM_KEY"],
+                api_key=settings.EMERGENT_LLM_KEY,
                 session_id=f"pyme-{bid}",
                 system_message=system,
             ).with_model("openai", "gpt-5.4-mini")
@@ -70,13 +99,21 @@ async def assistant_chat(data: ChatIn, user: dict = Depends(require_business)):
                     yield f"data: {json.dumps({'c': ev.content})}\n\n"
                 elif isinstance(ev, StreamDone):
                     break
-        except Exception as e:
+        except Exception:
             if not full:
                 full = "Lo siento, no pude procesar tu consulta en este momento. Intenta de nuevo en unos segundos."
                 yield f"data: {json.dumps({'c': full})}\n\n"
         await db.assistant_messages.insert_one({
             "id": new_id(), "business_id": bid, "role": "assistant", "content": full, "created_at": now_iso(),
         })
+        if not settings.EMERGENT_LLM_KEY or LlmChat is None:
+            await db.assistant_messages.insert_one({
+                "id": new_id(),
+                "business_id": bid,
+                "role": "assistant",
+                "content": "El proveedor de IA no está configurado en este entorno local; la sesión queda persistida para la revisión del negocio.",
+                "created_at": now_iso(),
+            })
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(

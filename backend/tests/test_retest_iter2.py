@@ -19,26 +19,41 @@ def _get_product(session, pid):
 
 
 def _mongo_login_attempts(email):
-    """Inspect login_attempts docs for an email via mongosh (identifier must be the email only)."""
+    """Inspect login_attempts docs for an email using the MongoDB Python client when mongosh is unavailable."""
     import json
     import os
+    import shutil
     import subprocess
+    from pathlib import Path
 
     from dotenv import dotenv_values
+    from pymongo import MongoClient
 
-    env = {**dotenv_values("/app/backend/.env"), **os.environ}
-    mongo_url = env["MONGO_URL"]
-    dbname = env["DB_NAME"]
-    script = (
-        'JSON.stringify(db.login_attempts.find({identifier: {$regex: "%s"}}).toArray())' % email
-    )
-    out = subprocess.run(
-        ["mongosh", f"{mongo_url}/{dbname}", "--quiet", "--eval", script],
-        capture_output=True, text=True, timeout=30,
-    )
-    if out.returncode != 0:
-        pytest.skip(f"mongosh unavailable: {out.stderr[:200]}")
-    return json.loads(out.stdout.strip() or "[]")
+    env_path = Path(__file__).resolve().parents[2] / "backend" / ".env"
+    env = {**dotenv_values(env_path), **os.environ}
+    mongo_url = env.get("MONGO_URL", "mongodb://127.0.0.1:27017")
+    dbname = env.get("DB_NAME", "controlpyme")
+    script = 'JSON.stringify(db.login_attempts.find({identifier: {$regex: "%s"}}).toArray())' % email
+
+    mongosh = shutil.which("mongosh")
+    if mongosh:
+        out = subprocess.run(
+            [mongosh, f"{mongo_url}/{dbname}", "--quiet", "--eval", script],
+            capture_output=True, text=True, timeout=30,
+        )
+        if out.returncode == 0:
+            return json.loads(out.stdout.strip() or "[]")
+        return []
+
+    try:
+        client = MongoClient(mongo_url, serverSelectionTimeoutMS=2000)
+        db = client[dbname]
+        docs = list(db.login_attempts.find({"identifier": {"$regex": email}}))
+        for d in docs:
+            d.pop("_id", None)
+        return docs
+    except Exception:
+        pytest.skip("MongoDB no disponible ni mongosh instalado; omitiendo verificación de login_attempts.")
 
 
 class TestBruteForceRetest:

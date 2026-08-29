@@ -1,5 +1,4 @@
 import os
-import re
 import uuid
 from pathlib import Path
 
@@ -7,25 +6,32 @@ import pytest
 import requests
 from dotenv import dotenv_values
 
-frontend_env = dotenv_values("/app/frontend/.env")
-_base = os.environ.get("REACT_APP_BACKEND_URL") or frontend_env.get("REACT_APP_BACKEND_URL")
-if not _base:
-    raise RuntimeError("REACT_APP_BACKEND_URL missing")
+ROOT_DIR = Path(__file__).resolve().parents[2]
+BACKEND_DIR = ROOT_DIR / "backend"
+DOTENV_PATHS = [BACKEND_DIR / ".env", ROOT_DIR / ".env"]
+for env_path in DOTENV_PATHS:
+    if env_path.exists():
+        for key, value in dotenv_values(env_path).items():
+            if key and value is not None and key not in os.environ:
+                os.environ[key] = value
+
+frontend_env = {}
+frontend_dotenv = ROOT_DIR / "frontend" / ".env"
+if frontend_dotenv.exists():
+    frontend_env = dotenv_values(frontend_dotenv)
+
+_base = os.environ.get("REACT_APP_BACKEND_URL") or frontend_env.get("REACT_APP_BACKEND_URL") or "http://localhost:8001"
 BASE_URL = _base.rstrip("/")
 API = f"{BASE_URL}/api"
 
 
 @pytest.fixture(scope="session")
 def test_credentials():
-    p = Path("/app/memory/test_credentials.md")
-    if not p.exists():
-        pytest.skip("Missing /app/memory/test_credentials.md")
-    content = p.read_text(encoding="utf-8")
-    email = re.search(r'(?im)^\s*(?:[-*]\s*)?(?:\*\*)?email(?:\*\*)?\s*:\s*`?([^`\s]+)', content)
-    pwd = re.search(r'(?im)^\s*(?:[-*]\s*)?(?:\*\*)?password(?:\*\*)?\s*:\s*`?([^`\s]+)', content)
-    if not email or not pwd:
-        pytest.skip("No credentials found in test_credentials.md")
-    return {"email": email.group(1), "password": pwd.group(1)}
+    email = os.environ.get("TEST_ADMIN_EMAIL") or os.environ.get("ADMIN_EMAIL")
+    password = os.environ.get("TEST_ADMIN_PASSWORD") or os.environ.get("ADMIN_PASSWORD")
+    if not email or not password:
+        pytest.skip("No hay credenciales de prueba en variables de entorno TEST_ADMIN_EMAIL / TEST_ADMIN_PASSWORD")
+    return {"email": email, "password": password}
 
 
 @pytest.fixture(scope="class")

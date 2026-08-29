@@ -1,9 +1,9 @@
-import os
 from datetime import timedelta
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
+from config import settings
 from database import db
 from models import LoginIn, RegisterIn
 from security import (
@@ -77,8 +77,11 @@ async def login(data: LoginIn, request: Request, response: Response):
 
 @router.post("/logout")
 async def logout(response: Response):
-    response.delete_cookie("access_token", path="/")
-    response.delete_cookie("refresh_token", path="/")
+    cookie_kwargs = {"path": "/"}
+    if settings.COOKIE_DOMAIN:
+        cookie_kwargs["domain"] = settings.COOKIE_DOMAIN
+    response.delete_cookie("access_token", **cookie_kwargs)
+    response.delete_cookie("refresh_token", **cookie_kwargs)
     return {"ok": True}
 
 
@@ -93,7 +96,7 @@ async def refresh(request: Request, response: Response):
     if not token:
         raise HTTPException(status_code=401, detail="Sin sesión")
     try:
-        payload = jwt.decode(token, os.environ["JWT_SECRET"], algorithms=["HS256"])
+        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=["HS256"])
         if payload.get("type") != "refresh":
             raise HTTPException(status_code=401, detail="Token inválido")
     except jwt.InvalidTokenError:
@@ -102,5 +105,14 @@ async def refresh(request: Request, response: Response):
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
     access = create_access_token(user["id"], user["email"])
-    response.set_cookie("access_token", access, httponly=True, secure=True, samesite="lax", max_age=15 * 60, path="/")
+    cookie_kwargs = {
+        "httponly": True,
+        "secure": settings.COOKIE_SECURE,
+        "samesite": settings.COOKIE_SAMESITE,
+        "max_age": 15 * 60,
+        "path": "/",
+    }
+    if settings.COOKIE_DOMAIN:
+        cookie_kwargs["domain"] = settings.COOKIE_DOMAIN
+    response.set_cookie("access_token", access, **cookie_kwargs)
     return {"ok": True, "access_token": access}

@@ -1,7 +1,9 @@
 """AI assistant SSE streaming with GPT 5.4 Mini + history persistence."""
 import json
+import os
 import time
 
+import pytest
 from conftest import API
 
 
@@ -11,6 +13,7 @@ class TestAssistant:
         assert r.status_code == 200
         assert isinstance(r.json()["messages"], list)
 
+    @pytest.mark.skipif(not os.getenv("EMERGENT_LLM_KEY"), reason="No hay clave EMERGENT_LLM_KEY configurada para validar el streaming real del asistente IA.")
     def test_chat_streams_spanish_grounded_answer(self, admin):
         t0 = time.time()
         with admin.post(f"{API}/assistant/chat",

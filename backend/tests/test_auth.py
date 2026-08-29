@@ -66,6 +66,25 @@ class TestAuth:
         assert r.status_code == 200 and r.json()["ok"] is True
         assert s.get(f"{API}/auth/me").status_code == 401
 
+    def test_secure_cookies_in_production_mode(self, monkeypatch):
+        import sys
+        from pathlib import Path
+
+        from fastapi import Response
+
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        import security
+
+        monkeypatch.setattr(security.settings, "APP_ENV", "production")
+        monkeypatch.setattr(security.settings, "COOKIE_SECURE", True)
+        monkeypatch.setattr(security.settings, "COOKIE_DOMAIN", "")
+
+        response = Response()
+        security.set_auth_cookies(response, {"id": "user-123", "email": "pilot@example.com"})
+
+        raw = response.headers.getlist("set-cookie")
+        assert any("Secure" in value for value in raw), raw
+
     def test_refresh_token_flow(self, test_credentials):
         s = requests.Session()
         s.post(f"{API}/auth/login", json=test_credentials)

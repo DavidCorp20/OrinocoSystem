@@ -1,4 +1,3 @@
-import os
 import uuid
 from datetime import datetime, timezone, timedelta
 
@@ -6,6 +5,7 @@ import bcrypt
 import jwt
 from fastapi import Depends, HTTPException, Request, Response
 
+from config import settings
 from database import db
 
 JWT_ALGORITHM = "HS256"
@@ -42,7 +42,7 @@ def create_access_token(user_id: str, email: str) -> str:
         "type": "access",
         "exp": now() + timedelta(minutes=ACCESS_MINUTES),
     }
-    return jwt.encode(payload, os.environ["JWT_SECRET"], algorithm=JWT_ALGORITHM)
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
 def create_refresh_token(user_id: str) -> str:
@@ -51,14 +51,24 @@ def create_refresh_token(user_id: str) -> str:
         "type": "refresh",
         "exp": now() + timedelta(days=REFRESH_DAYS),
     }
-    return jwt.encode(payload, os.environ["JWT_SECRET"], algorithm=JWT_ALGORITHM)
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
 def set_auth_cookies(response: Response, user: dict) -> dict:
     access = create_access_token(user["id"], user["email"])
     refresh = create_refresh_token(user["id"])
-    response.set_cookie("access_token", access, httponly=True, secure=True, samesite="lax", max_age=ACCESS_MINUTES * 60, path="/")
-    response.set_cookie("refresh_token", refresh, httponly=True, secure=True, samesite="lax", max_age=REFRESH_DAYS * 86400, path="/")
+    cookie_kwargs = {
+        "httponly": True,
+        "secure": settings.COOKIE_SECURE,
+        "samesite": settings.COOKIE_SAMESITE,
+        "max_age": ACCESS_MINUTES * 60,
+        "path": "/",
+    }
+    if settings.COOKIE_DOMAIN:
+        cookie_kwargs["domain"] = settings.COOKIE_DOMAIN
+
+    response.set_cookie("access_token", access, **{**cookie_kwargs, "max_age": ACCESS_MINUTES * 60})
+    response.set_cookie("refresh_token", refresh, **{**cookie_kwargs, "max_age": REFRESH_DAYS * 86400})
     return {"access_token": access, "refresh_token": refresh}
 
 
@@ -83,7 +93,7 @@ async def get_current_user(request: Request) -> dict:
     if not token:
         raise HTTPException(status_code=401, detail="No autenticado")
     try:
-        payload = jwt.decode(token, os.environ["JWT_SECRET"], algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[JWT_ALGORITHM])
         if payload.get("type") != "access":
             raise HTTPException(status_code=401, detail="Token inválido")
     except jwt.ExpiredSignatureError:

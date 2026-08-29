@@ -1,25 +1,27 @@
 """Iteration 3.1 retest: fiscal numbering gaps, bcv_rate cleanup on auto, barcodes,
 platform overview cleanliness, product unit exposure."""
 import os
-import re
 from pathlib import Path
 
 import pytest
 import requests
 from dotenv import dotenv_values
 
-frontend_env = dotenv_values("/app/frontend/.env")
-base_url = os.environ.get("REACT_APP_BACKEND_URL") or frontend_env.get("REACT_APP_BACKEND_URL")
-if not base_url:
-    raise RuntimeError("REACT_APP_BACKEND_URL missing")
+ROOT_DIR = Path(__file__).resolve().parents[2]
+frontend_env = {}
+frontend_dotenv = ROOT_DIR / "frontend" / ".env"
+if frontend_dotenv.exists():
+    frontend_env = dotenv_values(frontend_dotenv)
+base_url = os.environ.get("REACT_APP_BACKEND_URL") or frontend_env.get("REACT_APP_BACKEND_URL") or "http://localhost:8001"
 BASE_URL = base_url.rstrip("/")
 API = f"{BASE_URL}/api"
 
 
 def _creds():
-    content = Path("/app/memory/test_credentials.md").read_text(encoding="utf-8")
-    email = re.search(r"(?im)^- Email:\s*(\S+)", content).group(1)
-    password = re.search(r"(?im)^- Password:\s*(\S+)", content).group(1)
+    email = os.environ.get("TEST_ADMIN_EMAIL") or os.environ.get("ADMIN_EMAIL")
+    password = os.environ.get("TEST_ADMIN_PASSWORD") or os.environ.get("ADMIN_PASSWORD")
+    if not email or not password:
+        pytest.skip("No hay credenciales de prueba en TEST_ADMIN_EMAIL / TEST_ADMIN_PASSWORD")
     return email, password
 
 

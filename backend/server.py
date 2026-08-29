@@ -1,15 +1,9 @@
 import logging
-import os
-from pathlib import Path
-
-from dotenv import load_dotenv
-
-ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / ".env")
 
 from fastapi import APIRouter, FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
+from config import settings
 from database import client, db
 from routes_assistant import router as assistant_router
 from routes_auth import router as auth_router
@@ -39,9 +33,24 @@ for r in (auth_router, business_router, products_router, inventory_router, sales
 
 app.include_router(api_router)
 
+env_origins = [
+    origin.strip() for origin in (settings.CORS_ORIGINS.split(",") if settings.CORS_ORIGINS else [])
+    if origin.strip()
+]
+frontend_origins = {
+    settings.FRONTEND_URL,
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    *env_origins,
+}
+frontend_origins = [origin.rstrip("/") for origin in frontend_origins if origin]
+frontend_origins = list(dict.fromkeys(frontend_origins))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.environ.get("FRONTEND_URL", "http://localhost:3000"), "http://localhost:3000"],
+    allow_origins=frontend_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
