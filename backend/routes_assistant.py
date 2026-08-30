@@ -8,6 +8,7 @@ from database import db
 from models import ChatIn
 from security import new_id, now_iso, require_business
 from stats import build_assistant_context
+from routes_ai import margin_analysis
 
 try:
     from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
@@ -71,6 +72,17 @@ async def assistant_chat(data: ChatIn, user: dict = Depends(require_business)):
     bid = user["business_id"]
     business = await db.businesses.find_one({"id": bid}, {"_id": 0})
     context = await build_assistant_context(bid, business or {})
+
+    # AI-01: deterministic financial analysis is calculated by the backend and
+    # supplied to the LLM as facts. The LLM explains them; it does not calculate them.
+    margin_data = await margin_analysis(user)
+    margin_summary = margin_data["summary"]
+    margin_alerts = margin_data["alerts"][:10]
+    context += "\n\nANÁLISIS FINANCIERO AI-01 (90 días):"
+    context += f"\nIngresos: {margin_summary['revenue_90d']} | Costo realizado: {margin_summary['realized_cost_90d']} | Utilidad realizada: {margin_summary['realized_profit_90d']} | Margen realizado: {margin_summary['realized_margin_percent']}%"
+    context += f"\nAlertas detectadas: {margin_summary['alerts_count']}"
+    if margin_alerts:
+        context += "\nAlertas: " + " | ".join(a["message"] for a in margin_alerts)
 
     history = await db.assistant_messages.find({"business_id": bid}, {"_id": 0}).sort("created_at", -1).to_list(8)
     history.reverse()
