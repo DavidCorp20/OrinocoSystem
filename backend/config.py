@@ -32,7 +32,8 @@ class Settings:
     COOKIE_SECURE = _env_bool("COOKIE_SECURE", APP_ENV == "production")
     COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "lax").strip().lower()
     COOKIE_DOMAIN = os.getenv("COOKIE_DOMAIN", "").strip()
-    EMERGENT_LLM_KEY = os.getenv("EMERGENT_LLM_KEY")
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini")
     ADMIN_EMAIL = os.getenv("ADMIN_EMAIL")
     ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
     TEST_ADMIN_EMAIL = os.getenv("TEST_ADMIN_EMAIL")
@@ -70,7 +71,8 @@ for key, value in {
     "COOKIE_SECURE": str(settings.COOKIE_SECURE).lower(),
     "COOKIE_SAMESITE": settings.COOKIE_SAMESITE,
     "COOKIE_DOMAIN": settings.COOKIE_DOMAIN,
-    "EMERGENT_LLM_KEY": settings.EMERGENT_LLM_KEY,
+    "OPENAI_API_KEY": settings.OPENAI_API_KEY,
+    "OPENAI_MODEL": settings.OPENAI_MODEL,
     "ADMIN_EMAIL": settings.ADMIN_EMAIL,
     "ADMIN_PASSWORD": settings.ADMIN_PASSWORD,
     "TEST_ADMIN_EMAIL": settings.TEST_ADMIN_EMAIL,
