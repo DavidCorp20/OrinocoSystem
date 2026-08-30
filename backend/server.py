@@ -5,6 +5,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from config import settings
 from database import client, db
+from routes_ai import router as ai_router
 from routes_assistant import router as assistant_router
 from routes_auth import router as auth_router
 from routes_business import router as business_router
@@ -28,7 +29,7 @@ async def root():
     return {"message": "ControlPyme API"}
 
 
-for r in (auth_router, business_router, products_router, inventory_router, sales_router, purchases_router, expenses_router, dashboard_router, assistant_router, rates_router, platform_router):
+for r in (auth_router, business_router, products_router, inventory_router, sales_router, purchases_router, expenses_router, dashboard_router, assistant_router, ai_router, rates_router, platform_router):
     api_router.include_router(r)
 
 app.include_router(api_router)
