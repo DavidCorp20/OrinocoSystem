@@ -67,20 +67,31 @@ async def assistant_chat(data: ChatIn, user: dict = Depends(require_business)):
 
     history = await db.assistant_messages.find({"business_id": bid}, {"_id": 0}).sort("created_at", -1).to_list(8)
     history.reverse()
-    transcript = "\n".join(f"{'Usuario' if m['role'] == 'user' else 'Pyme'}: {m['content']}" for m in history)
 
-    await db.assistant_messages.insert_one({"id": new_id(), "business_id": bid, "role": "user", "content": data.message, "created_at": now_iso()})
+    messages = [{"role": "system", "content": SYSTEM_TEMPLATE.format(
+        name=(business or {}).get("name", "tu negocio"),
+        currency=(business or {}).get("currency", "USD"),
+        context=context,
+    )}]
+    for item in history:
+        role = item.get("role")
+        if role in {"user", "assistant"} and item.get("content"):
+            messages.append({"role": role, "content": item["content"]})
+    messages.append({"role": "user", "content": data.message})
 
-    system = SYSTEM_TEMPLATE.format(name=(business or {}).get("name", "tu negocio"), currency=(business or {}).get("currency", "USD"), context=context)
-    prompt = (f"Conversación reciente:\n{transcript}\n\n" if transcript else "") + f"Usuario: {data.message}"
+    await db.assistant_messages.insert_one({
+        "id": new_id(), "business_id": bid, "role": "user",
+        "content": data.message, "created_at": now_iso()
+    })
 
     async def event_generator():
         full = ""
+        client = None
         try:
-            # Production is configured with OpenRouter. It exposes an OpenAI-compatible API.
             api_key = os.getenv("OPENROUTER_API_KEY") or settings.OPENAI_API_KEY
             if not api_key:
                 raise RuntimeError("No hay una clave de IA configurada")
+
             is_openrouter = bool(os.getenv("OPENROUTER_API_KEY"))
             client_kwargs = {"api_key": api_key}
             if is_openrouter:
@@ -89,16 +100,47 @@ async def assistant_chat(data: ChatIn, user: dict = Depends(require_business)):
                     "HTTP-Referer": "https://cuadrapp.up.railway.app",
                     "X-Title": "CuadraApp",
                 }
+
             client = AsyncOpenAI(**client_kwargs)
             model = os.getenv("OPENROUTER_MODEL") if is_openrouter else (os.getenv("OPENAI_MODEL") or "gpt-5-mini")
-            response = await client.responses.create(model=model, instructions=system, input=prompt)
-            full = response.output_text or "No pude generar una respuesta en este momento."
-            yield f"data: {json.dumps({'c': full}, ensure_ascii=False)}\n\n"
-        except Exception:
+
+            # Use the Chat Completions endpoint for maximum compatibility with
+            # OpenRouter and the openai==1.99.9 SDK currently pinned in Railway.
+            stream = await client.chat.completions.create(
+                model=model,
+                messages=messages,
+                stream=True,
+                temperature=0.2,
+            )
+
+            async for chunk in stream:
+                delta = chunk.choices[0].delta.content if chunk.choices else None
+                if delta:
+                    full += delta
+                    yield f"data: {json.dumps({'c': delta}, ensure_ascii=False)}\n\n"
+
+            if not full:
+                full = "No pude generar una respuesta en este momento."
+                yield f"data: {json.dumps({'c': full}, ensure_ascii=False)}\n\n"
+
+        except Exception as exc:
+            # Keep provider details out of the user-facing response, but log the
+            # real exception so Railway can diagnose future provider failures.
+            print(f"[assistant] AI provider error: {type(exc).__name__}: {exc}")
             if not full:
                 full = "Lo siento, no pude procesar tu consulta en este momento. Inténtalo nuevamente."
                 yield f"data: {json.dumps({'c': full}, ensure_ascii=False)}\n\n"
-        await db.assistant_messages.insert_one({"id": new_id(), "business_id": bid, "role": "assistant", "content": full, "created_at": now_iso()})
-        yield "data: [DONE]\n\n"
+        finally:
+            await db.assistant_messages.insert_one({
+                "id": new_id(), "business_id": bid, "role": "assistant",
+                "content": full, "created_at": now_iso()
+            })
+            if client is not None:
+                await client.close()
+            yield "data: [DONE]\n\n"
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
