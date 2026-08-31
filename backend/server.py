@@ -34,19 +34,27 @@ for r in (auth_router, business_router, products_router, inventory_router, sales
 
 app.include_router(api_router)
 
+# CORS: normalize configured origins and always include the production frontend.
+# FRONTEND_URL must contain the origin only (no path such as /auth).
+def normalize_origin(value: str) -> str:
+    return value.strip().rstrip("/")
+
 env_origins = [
-    origin.strip() for origin in (settings.CORS_ORIGINS.split(",") if settings.CORS_ORIGINS else [])
+    normalize_origin(origin)
+    for origin in (settings.CORS_ORIGINS.split(",") if settings.CORS_ORIGINS else [])
     if origin.strip()
 ]
+
 frontend_origins = {
-    settings.FRONTEND_URL,
+    normalize_origin(settings.FRONTEND_URL) if settings.FRONTEND_URL else "",
+    "https://cuadrapp.up.railway.app",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://localhost:3001",
     "http://127.0.0.1:3001",
     *env_origins,
 }
-frontend_origins = [origin.rstrip("/") for origin in frontend_origins if origin]
+frontend_origins = [origin for origin in frontend_origins if origin]
 frontend_origins = list(dict.fromkeys(frontend_origins))
 
 app.add_middleware(
