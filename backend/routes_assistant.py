@@ -1,5 +1,6 @@
 import json
 import os
+import logging
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
@@ -13,6 +14,7 @@ from stats import build_assistant_context
 from routes_ai import margin_analysis
 
 router = APIRouter(tags=["assistant"])
+logger = logging.getLogger(__name__)
 
 
 async def _ensure_local_history_seed(business_id: str):
@@ -89,32 +91,40 @@ async def assistant_chat(data: ChatIn, user: dict = Depends(require_business)):
         client = None
         try:
             api_key = os.getenv("OPENROUTER_API_KEY") or settings.OPENAI_API_KEY
-            if not api_key:
-                raise RuntimeError("No hay una clave de IA configurada")
-
             is_openrouter = bool(os.getenv("OPENROUTER_API_KEY"))
+            if not api_key:
+                raise RuntimeError("No hay OPENROUTER_API_KEY ni OPENAI_API_KEY configurada")
+
             client_kwargs = {"api_key": api_key}
             if is_openrouter:
-                client_kwargs["base_url"] = "https://openrouter.ai/api/v1"
-                client_kwargs["default_headers"] = {
-                    "HTTP-Referer": "https://cuadrapp.up.railway.app",
-                    "X-Title": "CuadraApp",
-                }
+                client_kwargs.update({
+                    "base_url": "https://openrouter.ai/api/v1",
+                    "default_headers": {
+                        "HTTP-Referer": "https://cuadrapp.up.railway.app",
+                        "X-Title": "CuadraApp",
+                    },
+                })
 
             client = AsyncOpenAI(**client_kwargs)
-            model = os.getenv("OPENROUTER_MODEL") if is_openrouter else (os.getenv("OPENAI_MODEL") or "gpt-5-mini")
+            model = (
+                os.getenv("OPENROUTER_MODEL") or "openai/gpt-5-mini"
+                if is_openrouter
+                else os.getenv("OPENAI_MODEL") or "gpt-5-mini"
+            )
 
-            # Use the Chat Completions endpoint for maximum compatibility with
-            # OpenRouter and the openai==1.99.9 SDK currently pinned in Railway.
+            # OpenRouter exposes the OpenAI-compatible Chat Completions API.
+            # Do not send temperature here: reasoning models such as GPT-5 can
+            # reject that parameter, which previously made the assistant fail.
             stream = await client.chat.completions.create(
                 model=model,
                 messages=messages,
                 stream=True,
-                temperature=0.2,
             )
 
             async for chunk in stream:
-                delta = chunk.choices[0].delta.content if chunk.choices else None
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta.content
                 if delta:
                     full += delta
                     yield f"data: {json.dumps({'c': delta}, ensure_ascii=False)}\n\n"
@@ -124,9 +134,7 @@ async def assistant_chat(data: ChatIn, user: dict = Depends(require_business)):
                 yield f"data: {json.dumps({'c': full}, ensure_ascii=False)}\n\n"
 
         except Exception as exc:
-            # Keep provider details out of the user-facing response, but log the
-            # real exception so Railway can diagnose future provider failures.
-            print(f"[assistant] AI provider error: {type(exc).__name__}: {exc}")
+            logger.exception("[assistant] AI provider error")
             if not full:
                 full = "Lo siento, no pude procesar tu consulta en este momento. Inténtalo nuevamente."
                 yield f"data: {json.dumps({'c': full}, ensure_ascii=False)}\n\n"
@@ -142,5 +150,9 @@ async def assistant_chat(data: ChatIn, user: dict = Depends(require_business)):
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
     )
