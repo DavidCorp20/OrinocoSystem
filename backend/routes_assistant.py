@@ -56,16 +56,28 @@ async def assistant_history(user: dict = Depends(require_business)):
 async def assistant_chat(data: ChatIn, user: dict = Depends(require_business)):
     bid = user["business_id"]
     business = await db.businesses.find_one({"id": bid}, {"_id": 0})
-    context = await build_assistant_context(bid, business or {})
 
-    margin_data = await margin_analysis(user)
-    margin_summary = margin_data["summary"]
-    margin_alerts = margin_data["alerts"][:10]
-    context += "\n\nANÁLISIS FINANCIERO AI-01 (90 días):"
-    context += f"\nIngresos: {margin_summary['revenue_90d']} | Costo realizado: {margin_summary['realized_cost_90d']} | Utilidad realizada: {margin_summary['realized_profit_90d']} | Margen realizado: {margin_summary['realized_margin_percent']}%"
-    context += f"\nAlertas detectadas: {margin_summary['alerts_count']}"
-    if margin_alerts:
-        context += "\nAlertas: " + " | ".join(a["message"] for a in margin_alerts)
+    # The AI chat must remain usable even if a secondary analytics calculation
+    # has malformed legacy data. AI-01 enriches the prompt but is not allowed
+    # to make the entire assistant endpoint fail.
+    try:
+        context = await build_assistant_context(bid, business or {})
+    except Exception:
+        logger.exception("[assistant] build_assistant_context failed")
+        context = "No se pudo cargar parte del contexto operativo. Responde solo con los datos disponibles."
+
+    try:
+        margin_data = await margin_analysis(user)
+        margin_summary = margin_data["summary"]
+        margin_alerts = margin_data["alerts"][:10]
+        context += "\n\nANÁLISIS FINANCIERO AI-01 (90 días):"
+        context += f"\nIngresos: {margin_summary['revenue_90d']} | Costo realizado: {margin_summary['realized_cost_90d']} | Utilidad realizada: {margin_summary['realized_profit_90d']} | Margen realizado: {margin_summary['realized_margin_percent']}%"
+        context += f"\nAlertas detectadas: {margin_summary['alerts_count']}"
+        if margin_alerts:
+            context += "\nAlertas: " + " | ".join(a["message"] for a in margin_alerts)
+    except Exception:
+        logger.exception("[assistant] AI-01 margin analysis failed")
+        context += "\n\nANÁLISIS FINANCIERO AI-01: temporalmente no disponible."
 
     history = await db.assistant_messages.find({"business_id": bid}, {"_id": 0}).sort("created_at", -1).to_list(8)
     history.reverse()
@@ -106,15 +118,14 @@ async def assistant_chat(data: ChatIn, user: dict = Depends(require_business)):
                 })
 
             client = AsyncOpenAI(**client_kwargs)
-            model = (
-                os.getenv("OPENROUTER_MODEL") or "openai/gpt-5-mini"
-                if is_openrouter
-                else os.getenv("OPENAI_MODEL") or "gpt-5-mini"
-            )
+            if is_openrouter:
+                model = os.getenv("OPENROUTER_MODEL") or "openai/gpt-5-mini"
+            else:
+                model = os.getenv("OPENAI_MODEL") or "gpt-5-mini"
 
             # OpenRouter exposes the OpenAI-compatible Chat Completions API.
             # Do not send temperature here: reasoning models such as GPT-5 can
-            # reject that parameter, which previously made the assistant fail.
+            # reject that parameter and make the assistant fail.
             stream = await client.chat.completions.create(
                 model=model,
                 messages=messages,
@@ -133,16 +144,19 @@ async def assistant_chat(data: ChatIn, user: dict = Depends(require_business)):
                 full = "No pude generar una respuesta en este momento."
                 yield f"data: {json.dumps({'c': full}, ensure_ascii=False)}\n\n"
 
-        except Exception as exc:
+        except Exception:
             logger.exception("[assistant] AI provider error")
             if not full:
                 full = "Lo siento, no pude procesar tu consulta en este momento. Inténtalo nuevamente."
                 yield f"data: {json.dumps({'c': full}, ensure_ascii=False)}\n\n"
         finally:
-            await db.assistant_messages.insert_one({
-                "id": new_id(), "business_id": bid, "role": "assistant",
-                "content": full, "created_at": now_iso()
-            })
+            try:
+                await db.assistant_messages.insert_one({
+                    "id": new_id(), "business_id": bid, "role": "assistant",
+                    "content": full, "created_at": now_iso()
+                })
+            except Exception:
+                logger.exception("[assistant] failed to persist assistant message")
             if client is not None:
                 await client.close()
             yield "data: [DONE]\n\n"
