@@ -49,6 +49,17 @@ class ProductIn(BaseModel):
     min_stock: float = Field(default=5, ge=0)
     max_stock: Optional[float] = None
     unit: str = "unidad"
+class PriceSuggestionIn(BaseModel):
+    purchase_price: float = Field(ge=0)
+    target_margin_percent: float = Field(default=35, ge=1, le=90)
+class RecipeIngredientIn(BaseModel):
+    product_id: str
+    quantity: float = Field(gt=0)
+class RecipeIn(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    output_product_id: Optional[str] = None
+    yield_quantity: float = Field(default=1, gt=0)
+    ingredients: List[RecipeIngredientIn] = Field(min_length=1)
 class MovementIn(BaseModel):
     product_id: str
     type: str
