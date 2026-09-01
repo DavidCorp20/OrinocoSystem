@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from database import db
 from models import CashClosureIn
@@ -29,22 +29,19 @@ async def _summary(bid: str, date: str):
     purchases = await db.purchases.find({"business_id": bid, "created_at": {"$gte": start, "$lte": end}}, {"_id": 0}).to_list(50000)
     expenses = await db.expenses.find({"business_id": bid, "date": date}, {"_id": 0}).to_list(50000)
     obligation_payments = await db.obligation_payments.find({"business_id": bid, "paid_at": {"$gte": start, "$lte": end}}, {"_id": 0}).to_list(50000)
+    obligation_ids = list({p.get("obligation_id") for p in obligation_payments if p.get("obligation_id")})
+    obligations = await db.obligations.find({"business_id": bid, "id": {"$in": obligation_ids}}, {"_id": 0, "id": 1, "kind": 1}).to_list(50000) if obligation_ids else []
+    kind_by_id = {o["id"]: o.get("kind") for o in obligations}
 
     cash_sales = round(sum(_cash_amount(s) for s in sales), 2)
     cash_purchases = round(sum(_cash_amount(p) for p in purchases if p.get("status", "pagada") != "pendiente"), 2)
     cash_expenses = round(sum(float(e.get("amount", 0) or 0) for e in expenses if str(e.get("payment_method", "efectivo")).strip().lower() in {"efectivo", "cash"}), 2)
-    cash_receivables = round(sum(float(p.get("amount", 0) or 0) for p in obligation_payments if p.get("kind") == "por_cobrar" and str(p.get("payment_method", "")).strip().lower() in {"efectivo", "cash"}), 2)
-    cash_payables = round(sum(float(p.get("amount", 0) or 0) for p in obligation_payments if p.get("kind") == "por_pagar" and str(p.get("payment_method", "")).strip().lower() in {"efectivo", "cash"}), 2)
+    cash_receivables = round(sum(float(p.get("amount", 0) or 0) for p in obligation_payments if kind_by_id.get(p.get("obligation_id")) == "por_cobrar" and str(p.get("payment_method", "")).strip().lower() in {"efectivo", "cash"}), 2)
+    cash_payables = round(sum(float(p.get("amount", 0) or 0) for p in obligation_payments if kind_by_id.get(p.get("obligation_id")) == "por_pagar" and str(p.get("payment_method", "")).strip().lower() in {"efectivo", "cash"}), 2)
     return {
-        "date": date,
-        "cash_sales": cash_sales,
-        "cash_receivables": cash_receivables,
-        "cash_purchases": cash_purchases,
-        "cash_payables": cash_payables,
-        "cash_expenses": cash_expenses,
-        "sales_count": len(sales),
-        "purchases_count": len(purchases),
-        "expenses_count": len(expenses),
+        "date": date, "cash_sales": cash_sales, "cash_receivables": cash_receivables,
+        "cash_purchases": cash_purchases, "cash_payables": cash_payables, "cash_expenses": cash_expenses,
+        "sales_count": len(sales), "purchases_count": len(purchases), "expenses_count": len(expenses),
         "expected_before_opening": round(cash_sales + cash_receivables - cash_purchases - cash_payables - cash_expenses, 2),
     }
 
