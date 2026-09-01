@@ -10,7 +10,8 @@ export const REASON_LABELS={compra:"Compra",reposicion:"Reposición",ajuste_posi
 export const ENTRY_REASONS=[{value:"reposicion",label:"Reposición"},{value:"ajuste_positivo",label:"Ajuste positivo"},{value:"devolucion",label:"Devolución de cliente"}];
 export const EXIT_REASONS=[{value:"danado",label:"Producto dañado"},{value:"perdida",label:"Pérdida"},{value:"ajuste_negativo",label:"Ajuste negativo"},{value:"devolucion_proveedor",label:"Devolución a proveedor"}];
 export const fmtBs=n=>`Bs ${Number(n||0).toLocaleString("es-VE",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
-export const fmtDual=(n,rate)=>{const amount=Number(n||0);const r=Number(rate||0);return r>0?`${fmtMoney(amount,"USD")} · ${fmtBs(amount*r)}`:fmtMoney(amount,"USD");};
+export const currencyToBs=(amount,currency,rateUsd,rateEur)=>{const value=Number(amount||0);if(currency==="VES")return value;if(currency==="USD")return value*Number(rateUsd||0);if(currency==="EUR")return value*Number(rateEur||0);return null;};
+export const fmtDual=(amount,currency="USD",rates={})=>{const value=Number(amount||0);const primary=fmtMoney(value,currency);const bs=currencyToBs(value,currency,rates.usd,rates.eur);return bs!==null&&Number.isFinite(bs)&&bs>0?`${primary} · ≈ ${fmtBs(bs)}`:primary;};
 export const ROLE_LABELS={propietario:"Propietario",administrador:"Administrador",vendedor:"Vendedor"};
 export const fmtPct=n=>`${Number(n||0).toLocaleString("es",{maximumFractionDigits:1})}%`;
 export const stockStatus=p=>{if(p.stock<=0)return{key:"agotado",label:"Agotado",cls:"bg-rose-100 text-rose-800 border-rose-300"};if(p.stock<=(p.min_stock??0))return{key:"bajo",label:"Stock bajo",cls:"bg-amber-100 text-amber-800 border-amber-300"};return{key:"ok",label:"OK",cls:"bg-emerald-100 text-emerald-800 border-emerald-300"};};
