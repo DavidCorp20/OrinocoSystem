@@ -16,7 +16,9 @@ def _parse_date(value: Any) -> datetime | None:
 
 def build_sales_features(sales: list[dict], days: int = 30) -> dict:
     """Create lightweight, explainable features from historical sales."""
-    cutoff = datetime.now().astimezone() - timedelta(days=days)
+    today = datetime.now().astimezone().date()
+    start_date = today - timedelta(days=max(days - 1, 0))
+    cutoff = datetime.combine(start_date, datetime.min.time()).astimezone()
     daily = defaultdict(float)
     product_units = defaultdict(float)
     product_revenue = defaultdict(float)
@@ -24,9 +26,7 @@ def build_sales_features(sales: list[dict], days: int = 30) -> dict:
 
     for sale in sales:
         created = _parse_date(sale.get("created_at"))
-        if created and created < cutoff:
-            continue
-        if not created:
+        if not created or created < cutoff:
             continue
         valid_sales += 1
         day = created.astimezone().date().isoformat()
@@ -39,11 +39,16 @@ def build_sales_features(sales: list[dict], days: int = 30) -> dict:
             product_units[pid] += qty
             product_revenue[pid] += float(item.get("line_total", 0) or 0)
 
+    daily_series = {
+        (start_date + timedelta(days=i)).isoformat(): round(daily.get((start_date + timedelta(days=i)).isoformat(), 0.0), 2)
+        for i in range(days)
+    }
+
     return {
-        "daily_revenue": dict(daily),
+        "daily_revenue": daily_series,
         "product_units": dict(product_units),
         "product_revenue": dict(product_revenue),
         "days": days,
         "sales_count": valid_sales,
-        "observed_days": len(daily),
+        "observed_days": sum(1 for value in daily_series.values() if value > 0),
     }
