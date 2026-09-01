@@ -13,6 +13,7 @@ export default function BarcodeScanner({ open, onClose, onDetected }) {
   useEffect(() => {
     if (!open) return undefined;
     let timer;
+    let video;
     const start = async () => {
       setError("");
       if (!navigator.mediaDevices?.getUserMedia) {
@@ -28,13 +29,15 @@ export default function BarcodeScanner({ open, onClose, onDetected }) {
         const wanted = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "itf", "codabar"];
         detectorRef.current = new window.BarcodeDetector({ format: wanted.filter((x) => formats.includes(x)) });
         streamRef.current = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
-        videoRef.current.srcObject = streamRef.current;
-        await videoRef.current.play();
+        video = videoRef.current;
+        if (!video) return;
+        video.srcObject = streamRef.current;
+        await video.play();
         setScanning(true);
         const loop = async () => {
-          if (!videoRef.current || !detectorRef.current) return;
+          if (!video || !detectorRef.current) return;
           try {
-            const codes = await detectorRef.current.detect(videoRef.current);
+            const codes = await detectorRef.current.detect(video);
             const value = codes?.[0]?.rawValue;
             if (value) { onDetected(value); return; }
           } catch (_) {}
@@ -51,7 +54,8 @@ export default function BarcodeScanner({ open, onClose, onDetected }) {
       if (timer) cancelAnimationFrame(timer);
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
-      if (videoRef.current) videoRef.current.srcObject = null;
+      if (video) video.srcObject = null;
+      detectorRef.current = null;
       setScanning(false);
     };
   }, [open, onDetected]);
