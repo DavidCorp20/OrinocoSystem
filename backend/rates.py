@@ -14,32 +14,49 @@ async def _fetch_bcv() -> dict:
         r = await http.get(BCV_URL, headers={"Accept": "application/json"})
         r.raise_for_status()
         payload = r.json()
-    rate = payload.get("USD")
-    if not isinstance(rate, (int, float)) or rate <= 0:
-        raise ValueError("Tasa BCV inválida desde el proveedor")
+    usd = payload.get("USD")
+    eur = payload.get("EUR")
+    if not isinstance(usd, (int, float)) or usd <= 0:
+        raise ValueError("Tasa USD inválida desde el proveedor")
+    if not isinstance(eur, (int, float)) or eur <= 0:
+        raise ValueError("Tasa EUR inválida desde el proveedor")
     return {
-        "rate": float(rate),
+        "usd": float(usd),
+        "eur": float(eur),
         "effective_date": payload.get("effective_date"),
         "retrieved_at": now_iso(),
         "provider": "bcv.today",
     }
 
 
-async def get_bcv_rate(force: bool = False):
-    doc = await db.rates.find_one({"_id": "bcv_usd"})
+async def get_bcv_rates(force: bool = False):
+    doc = await db.rates.find_one({"_id": "bcv_rates"})
     if doc and not force and doc.get("expires_at", "") > now_iso():
         return doc
     try:
         fresh = await _fetch_bcv()
-        fresh["_id"] = "bcv_usd"
+        fresh["_id"] = "bcv_rates"
         fresh["expires_at"] = (now() + timedelta(minutes=CACHE_MINUTES)).isoformat()
-        await db.rates.replace_one({"_id": "bcv_usd"}, fresh, upsert=True)
+        await db.rates.replace_one({"_id": "bcv_rates"}, fresh, upsert=True)
         fresh["stale"] = False
         return fresh
     except Exception:
         if doc:
             return {**doc, "stale": True}
         return None
+
+
+async def get_bcv_rate(force: bool = False):
+    rates = await get_bcv_rates(force=force)
+    if not rates:
+        return None
+    return {
+        "rate": rates.get("usd"),
+        "effective_date": rates.get("effective_date"),
+        "retrieved_at": rates.get("retrieved_at"),
+        "provider": rates.get("provider", "bcv.today"),
+        "stale": rates.get("stale", False),
+    }
 
 
 async def get_effective_rate(business: dict) -> dict:
