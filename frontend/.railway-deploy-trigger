@@ -1,0 +1,2 @@
+Railway deployment trigger for the current main frontend build.
+Current POS checkout uses the CONFIRMAR action in NuevaVenta.jsx.
