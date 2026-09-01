@@ -6,13 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from config import settings
 from database import db
 from models import LoginIn, RegisterIn
-from security import (
-    create_access_token, get_current_user, hash_password, new_id, now, now_iso,
-    public_user, set_auth_cookies, verify_password,
-)
+from security import create_access_token, get_current_user, hash_password, new_id, now, now_iso, public_user, set_auth_cookies, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
 MAX_ATTEMPTS = 5
 LOCK_MINUTES = 15
 
@@ -28,45 +24,29 @@ async def register(data: RegisterIn, response: Response):
     email = data.email.lower()
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Ya existe una cuenta con este correo")
-    user = {
-        "id": new_id(),
-        "email": email,
-        "name": data.name.strip(),
-        "password_hash": hash_password(data.password),
-        "role": "propietario",
-        "platform_role": None,
-        "business_id": None,
-        "created_at": now_iso(),
-    }
+    user = {"id": new_id(), "email": email, "name": data.name.strip(), "password_hash": hash_password(data.password), "role": "propietario", "platform_role": None, "business_id": None, "approved": False, "approved_at": None, "approved_by": None, "created_at": now_iso()}
     await db.users.insert_one(user)
-    tokens = set_auth_cookies(response, user)
-    return {"user": public_user(user), "business": None, **tokens}
+    return {"user": public_user(user), "business": None, "pending_approval": True}
 
 
 @router.post("/login")
 async def login(data: LoginIn, request: Request, response: Response):
     email = data.email.lower()
-    identifier = email
-
-    attempts = await db.login_attempts.find_one({"identifier": identifier})
+    attempts = await db.login_attempts.find_one({"identifier": email})
     if attempts and attempts.get("count", 0) >= MAX_ATTEMPTS:
         if attempts.get("locked_until", "") > now_iso():
             raise HTTPException(status_code=429, detail="Demasiados intentos fallidos. Intenta de nuevo en 15 minutos.")
-        await db.login_attempts.update_one({"identifier": identifier}, {"$set": {"count": 0, "locked_until": ""}})
+        await db.login_attempts.update_one({"identifier": email}, {"$set": {"count": 0, "locked_until": ""}})
         attempts = None
-
     user = await db.users.find_one({"email": email})
     if not user or not verify_password(data.password, user["password_hash"]):
         count = (attempts.get("count", 0) if attempts else 0) + 1
         locked_until = (now() + timedelta(minutes=LOCK_MINUTES)).isoformat() if count >= MAX_ATTEMPTS else ""
-        await db.login_attempts.update_one(
-            {"identifier": identifier},
-            {"$set": {"identifier": identifier, "count": count, "locked_until": locked_until}},
-            upsert=True,
-        )
+        await db.login_attempts.update_one({"identifier": email}, {"$set": {"identifier": email, "count": count, "locked_until": locked_until}}, upsert=True)
         raise HTTPException(status_code=401, detail="Correo o contraseña incorrectos")
-
-    await db.login_attempts.delete_one({"identifier": identifier})
+    await db.login_attempts.delete_one({"identifier": email})
+    if user.get("platform_role") != "superadmin" and user.get("approved") is False:
+        raise HTTPException(status_code=403, detail="Tu cuenta está pendiente de aprobación. Te avisaremos cuando puedas ingresar.")
     if user.get("business_id"):
         biz = await db.businesses.find_one({"id": user["business_id"]}, {"active": 1})
         if biz and biz.get("active") is False:
@@ -104,14 +84,10 @@ async def refresh(request: Request, response: Response):
     user = await db.users.find_one({"id": payload["sub"]})
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
+    if user.get("platform_role") != "superadmin" and user.get("approved") is False:
+        raise HTTPException(status_code=403, detail="Tu cuenta está pendiente de aprobación.")
     access = create_access_token(user["id"], user["email"])
-    cookie_kwargs = {
-        "httponly": True,
-        "secure": settings.COOKIE_SECURE,
-        "samesite": settings.COOKIE_SAMESITE,
-        "max_age": 15 * 60,
-        "path": "/",
-    }
+    cookie_kwargs = {"httponly": True, "secure": settings.COOKIE_SECURE, "samesite": settings.COOKIE_SAMESITE, "max_age": 15 * 60, "path": "/"}
     if settings.COOKIE_DOMAIN:
         cookie_kwargs["domain"] = settings.COOKIE_DOMAIN
     response.set_cookie("access_token", access, **cookie_kwargs)
