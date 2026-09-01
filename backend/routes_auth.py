@@ -45,7 +45,7 @@ async def login(data: LoginIn, request: Request, response: Response):
         await db.login_attempts.update_one({"identifier": email}, {"$set": {"identifier": email, "count": count, "locked_until": locked_until}}, upsert=True)
         raise HTTPException(status_code=401, detail="Correo o contraseña incorrectos")
     await db.login_attempts.delete_one({"identifier": email})
-    if user.get("platform_role") != "superadmin" and user.get("approved") is False:
+    if user.get("platform_role") != "superadmin" and user.get("approved") is not True:
         raise HTTPException(status_code=403, detail="Tu cuenta está pendiente de aprobación. Te avisaremos cuando puedas ingresar.")
     if user.get("business_id"):
         biz = await db.businesses.find_one({"id": user["business_id"]}, {"active": 1})
@@ -84,7 +84,7 @@ async def refresh(request: Request, response: Response):
     user = await db.users.find_one({"id": payload["sub"]})
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
-    if user.get("platform_role") != "superadmin" and user.get("approved") is False:
+    if user.get("platform_role") != "superadmin" and user.get("approved") is not True:
         raise HTTPException(status_code=403, detail="Tu cuenta está pendiente de aprobación.")
     access = create_access_token(user["id"], user["email"])
     cookie_kwargs = {"httponly": True, "secure": settings.COOKIE_SECURE, "samesite": settings.COOKIE_SAMESITE, "max_age": 15 * 60, "path": "/"}
