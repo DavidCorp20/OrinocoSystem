@@ -35,6 +35,14 @@ def _money(value, currency="USD"):
     return f"{formatted} {currency}" if currency else formatted
 
 
+def _number(value):
+    try:
+        number = float(value)
+        return f"{number:,.0f}".replace(",", ".")
+    except (TypeError, ValueError):
+        return "0"
+
+
 def _percent(value):
     try:
         return f"{float(value):.1f}%"
@@ -42,8 +50,8 @@ def _percent(value):
         return None
 
 
-def _first_name(product):
-    return (product or {}).get("name") or "ese producto"
+def _product_name(product):
+    return (product or {}).get("product_name") or (product or {}).get("name") or "ese producto"
 
 
 def _classify_intent(message: str) -> str:
@@ -55,8 +63,9 @@ def _classify_intent(message: str) -> str:
         return "greeting"
     groups = {
         "improve_sales": ("mejorar ventas", "vender más", "vender mas", "aumentar ventas", "subir ventas", "más ventas", "mas ventas", "cómo vendo", "como vendo", "qué hago para vender", "que hago para vender"),
-        "sales": ("ventas", "vendí", "vendi", "vendiendo", "vendido", "cómo van", "como van", "cómo estoy vendiendo", "como estoy vendiendo"),
-        "top_products": ("producto más vendido", "producto mas vendido", "productos más vendidos", "productos mas vendidos", "qué se vende más", "que se vende mas", "mejores productos", "qué productos venden", "que productos venden"),
+        "sales_detail": ("qué tanto", "que tanto", "cuánto subieron", "cuanto subieron", "cuánto crecieron", "cuanto crecieron", "qué porcentaje", "que porcentaje", "porcentaje de ventas", "cuánto crecieron mis ventas", "cuanto crecieron mis ventas"),
+        "sales": ("ventas", "vendí", "vendi", "vendiendo", "vendido", "cómo van", "como van", "cómo estoy vendiendo", "como estoy vendiendo", "cómo fueron las ventas", "como fueron las ventas"),
+        "top_products": ("producto más vendido", "producto mas vendido", "productos más vendidos", "productos mas vendidos", "qué se vende más", "que se vende mas", "mejores productos", "qué productos venden", "que productos venden", "qué producto debo vender", "que producto debo vender", "qué debería vender", "que deberia vender"),
         "restock": ("reponer", "reposición", "reposicion", "qué compro", "que compro", "qué debo comprar", "que debo comprar", "qué comprar", "que comprar", "stock", "inventario", "se va a acabar", "se acaba"),
         "profit": ("ganancia", "ganancias", "utilidad", "margen", "rentable", "rentabilidad", "qué me deja más", "que me deja mas", "más ganancia", "mas ganancia"),
         "anomaly": ("alerta", "anomalía", "anomalia", "raro", "extraño", "extrano", "caída", "caida", "problema con ventas"),
@@ -80,75 +89,85 @@ async def _native_cubi_reply(business_id: str, user_message: str) -> str:
 
     sales_count = history.get("sales_count", 0)
     observed_days = history.get("observed_days", 0)
-    currency = (await db.businesses.find_one({"id": business_id}, {"_id": 0, "currency": 1}) or {}).get("currency", "USD")
+    business = await db.businesses.find_one({"id": business_id}, {"_id": 0, "currency": 1}) or {}
+    currency = business.get("currency", "USD")
     urgent = [x for x in inventory if x.get("suggested_purchase", 0) > 0]
     intent = _classify_intent(user_message)
 
     if intent == "greeting":
-        return "¡Hola! 👋 ¿Cómo va el negocio? Puedo ayudarte a revisar ventas, productos, inventario o ganancias. ¿Qué quieres revisar?"
+        return "¡Hola! 👋 ¿Cómo va el negocio? Puedo ayudarte con ventas, productos, inventario o ganancias."
 
-    if sales_count == 0:
-        if intent in {"sales", "improve_sales", "top_products", "profit", "forecast", "anomaly"}:
-            return "Todavía no tengo suficientes ventas registradas para analizar esa parte. Cuando tengas más movimiento, puedo ayudarte a encontrar qué está funcionando y qué mejorar."
+    if sales_count == 0 and intent in {"sales", "sales_detail", "improve_sales", "top_products", "profit", "forecast", "anomaly"}:
+        return "Todavía no tengo suficientes ventas registradas para analizar eso. Cuando haya más movimiento, te diré qué está funcionando y qué mejorar."
 
     if intent == "improve_sales":
         if top:
-            names = ", ".join(_first_name(p) for p in top[:3])
-            return f"Sí. Empezaría por aprovechar lo que ya funciona: {names}. También podemos revisar cuáles te dejan más ganancia. ¿Quieres que los compare?"
-        return "Sí. Podemos empezar revisando qué productos se venden más y cuáles te dejan mejor ganancia. ¿Quieres que lo haga?"
+            names = ", ".join(_product_name(p) for p in top[:3])
+            return f"Empezaría por lo que ya funciona: {names}. También puedo decirte cuál te deja más ganancia. ¿Lo revisamos?"
+        return "Empezaría revisando tus productos más vendidos y los que dejan más ganancia. ¿Quieres que los compare?"
+
+    if intent == "sales_detail":
+        trend = forecast.get("trend_percent")
+        if trend is None:
+            return f"Tienes {sales_count} ventas registradas. Todavía no tengo una comparación confiable del crecimiento."
+        direction = "crecieron" if trend > 0 else "bajaron" if trend < 0 else "se mantuvieron estables"
+        return f"Tus ventas {direction} aproximadamente un {_percent(abs(trend))}. ¿Quieres que te diga qué productos explican ese cambio?"
 
     if intent == "sales":
-        if not forecast:
-            return f"Tienes {sales_count} ventas registradas. Todavía estoy reuniendo suficiente información para darte una lectura más completa."
         trend = forecast.get("trend_percent")
-        if trend is not None:
-            direction = "subiendo" if trend > 0 else "bajando" if trend < 0 else "bastante estables"
-            return f"Tus ventas vienen {direction}. 📈" if trend > 0 else f"Tus ventas vienen {direction}. Vale la pena revisar qué está pasando." if trend < 0 else "Tus ventas vienen bastante estables. Podemos buscar oportunidades para hacerlas crecer."
-        return f"Tienes {sales_count} ventas registradas. ¿Quieres que revise cuáles productos están moviendo más el negocio?"
+        if trend is None:
+            return f"Tienes {sales_count} ventas en {observed_days} días con actividad. ¿Quieres que revise tus productos?"
+        if trend > 0:
+            return f"Van bien: tus ventas muestran una tendencia al alza de {_percent(trend)}. 📈 ¿Quieres saber qué producto está impulsando el crecimiento?"
+        if trend < 0:
+            return f"Hay una caída reciente de {_percent(abs(trend))}. Vale la pena revisar qué productos están perdiendo movimiento. ¿Lo hago?"
+        return "Tus ventas están bastante estables. Podemos buscar qué productos tienen potencial para hacerlas crecer."
 
     if intent == "top_products":
         if not top:
-            return "Todavía no tengo suficiente información para decirte cuáles son tus productos más vendidos."
-        names = ", ".join(_first_name(p) for p in top[:5])
-        return f"Los que más movimiento tienen son: {names}. ¿Quieres que revise cuáles de ellos te dejan más ganancia?"
+            return "Todavía no tengo suficiente información para identificar tus productos más vendidos."
+        best = top[0]
+        name = _product_name(best)
+        units = _number(best.get("units"))
+        revenue = _money(best.get("revenue"), currency)
+        return f"El que más vendes es {name}: {units} unidades y {revenue} en ventas. ¿Quieres que te diga cuáles siguen después?"
 
     if intent == "restock":
         if not urgent:
-            return "Por ahora no veo productos que necesiten una reposición urgente. Si quieres, también puedo revisar cuáles tienen poco stock."
-        names = ", ".join(_first_name(x) for x in urgent[:5])
-        extra = f" y {len(urgent) - 5} más" if len(urgent) > 5 else ""
-        return f"Yo revisaría primero estos: {names}{extra}. Son los que conviene tener disponibles para evitar quedarte sin producto."
+            return "Por ahora no veo productos que necesiten reposición urgente. También puedo revisar cuáles tienen poco stock."
+        first = urgent[0]
+        names = ", ".join(_product_name(x) for x in urgent[:4])
+        qty = first.get("suggested_purchase", 0)
+        extra = f" y {len(urgent) - 4} más" if len(urgent) > 4 else ""
+        return f"Primero revisaría {names}{extra}. Por ejemplo, de { _product_name(first) } conviene comprar unas {_number(qty)} unidades."
 
     if intent == "profit":
-        candidates = [p for p in top if p.get("profit") is not None]
+        candidates = [p for p in abc if p.get("profit") is not None]
         if not candidates:
-            candidates = [p for p in abc if p.get("profit") is not None]
-        if not candidates:
-            return "Todavía no tengo suficiente información de costos para decirte qué productos te dejan más ganancia."
+            return "Todavía no tengo suficientes datos de costos para calcular qué producto te deja más ganancia."
         best = max(candidates, key=lambda p: float(p.get("profit") or 0))
         profit = _money(best.get("profit"), currency)
         margin = _percent(best.get("margin_percent"))
-        detail = f" con un margen de {margin}" if margin else ""
-        return f"El producto que más ganancia te está dejando es {_first_name(best)}: aproximadamente {profit}{detail}. ¿Quieres que revise otros productos para comparar?"
+        detail = f" y un margen de {margin}" if margin else ""
+        return f"El que más ganancia te deja es {_product_name(best)}: {profit}{detail}. ¿Quieres comparar los 3 mejores?"
 
     if intent == "forecast":
         if not forecast.get("available"):
-            return "Todavía no tengo suficientes datos para hacer una buena proyección. Con más ventas registradas podré darte una estimación más útil."
+            return "Todavía no tengo suficientes datos para hacer una buena proyección."
         value = _money(forecast.get("predicted_period_revenue"), currency)
         days = forecast.get("horizon_days", 7)
-        return f"Para los próximos {days} días, estimo unas ventas de alrededor de {value}. Tómalo como una guía, no como una garantía. ¿Quieres que revisemos qué productos pueden sostener ese resultado?"
+        return f"Para los próximos {days} días estimo unas ventas de {value}. Es una guía, no una garantía."
 
     if intent == "anomaly":
         if anomaly.get("is_anomaly"):
-            return "Sí, encontré un cambio fuera de lo habitual en tus ingresos. Conviene revisar qué pasó en esos días y si estuvo relacionado con algún producto o venta puntual."
-        return "No veo un cambio especialmente fuera de lo normal en tus ingresos recientes. Si quieres, podemos revisar la evolución de las ventas."
+            return "Sí, detecté un cambio fuera de lo habitual en tus ingresos. Podemos revisar qué venta o producto pudo provocarlo."
+        return "No veo nada especialmente fuera de lo normal en tus ingresos recientes."
 
     if intent == "unknown":
-        return "Todavía estoy aprendiendo sobre esa parte del negocio. Por ahora puedo ayudarte con ventas, productos, inventario, ganancias y reposición."
+        return "Todavía estoy aprendiendo sobre esa parte. Puedo revisar tus ventas, productos, inventario y ganancias."
 
-    # Generic fallback keeps the conversation short and invites the next useful topic.
     if top:
-        return f"Puedo ayudarte a revisar tus ventas y productos. Por ejemplo, ahora mismo puedo decirte cuáles se están vendiendo más, como {_first_name(top[0])}. ¿Qué quieres saber?"
+        return f"Puedo ayudarte a revisar tus ventas y productos. Ahora mismo, por ejemplo, { _product_name(top[0]) } es de los que más movimiento tiene. ¿Qué quieres saber?"
     return "Puedo ayudarte a revisar ventas, productos, inventario y ganancias. ¿Qué quieres saber?"
 
 
