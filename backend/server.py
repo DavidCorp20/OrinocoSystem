@@ -23,6 +23,7 @@ from routes_reports_analysis import router as reports_router
 from routes_obligations import router as obligations_router
 from routes_recipes import router as recipes_router
 from routes_promotions import router as promotions_router
+from routes_cash_closure import router as cash_closure_router
 from seed import seed_all
 
 app = FastAPI(title="CuadraApp API")
@@ -57,6 +58,7 @@ for r in (
     obligations_router,
     recipes_router,
     promotions_router,
+    cash_closure_router,
 ):
     api_router.include_router(r)
 app.include_router(api_router)
@@ -97,7 +99,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=frontend_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["*"] ,
     allow_headers=["*"],
 )
 
@@ -135,6 +137,7 @@ async def startup():
     await db.sales.create_index([("business_id", 1), ("created_at", -1)])
     await db.purchases.create_index([("business_id", 1), ("created_at", -1)])
     await db.expenses.create_index([("business_id", 1), ("created_at", -1)])
+    await db.expenses.create_index([("business_id", 1), ("date", 1)])
     await db.inventory_movements.create_index([("business_id", 1), ("created_at", -1)])
     await db.assistant_messages.create_index([("business_id", 1), ("created_at", 1)])
     await db.obligations.create_index([("business_id", 1), ("status", 1), ("due_date", 1)])
@@ -145,6 +148,7 @@ async def startup():
     await db.platform_billing.create_index([("subscription_id", 1), ("paid_at", -1)])
     await db.platform_expenses.create_index([("date", 1)])
     await db.promotions.create_index([("business_id", 1), ("created_at", -1)])
+    await db.cash_closures.create_index([("business_id", 1), ("date", -1), ("closed_at", -1)])
     await ensure_managed_accounts_approved()
     defaults = [
         {
@@ -175,8 +179,6 @@ async def startup():
             upsert=True,
         )
 
-    # Demo/seed data is useful locally but must never be created or modified
-    # automatically by a production startup.
     if settings.APP_ENV != "production":
         await seed_all()
 
