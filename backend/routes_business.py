@@ -28,6 +28,7 @@ async def create_business(data: BusinessIn, user: dict = Depends(get_current_use
 async def update_settings(data: SettingsIn, user: dict = Depends(require_roles("propietario"))):
     updates={k:v for k,v in data.model_dump().items() if v is not None}
     if "bcv_mode" in updates and updates["bcv_mode"] not in ("auto","manual"): raise HTTPException(400,"Modo de tasa inválido")
+    if "price_reference" in updates and updates["price_reference"] not in ("usd","eur"): raise HTTPException(400,"Moneda de comparación inválida")
     if "bcv_rate" in updates: updates["bcv_rate_date"]=now_iso()[:10]
     if updates.get("bcv_mode")=="auto": updates["bcv_rate"]=None;updates["bcv_rate_date"]=None
     if not updates: raise HTTPException(400,"Nada que actualizar")
@@ -42,7 +43,7 @@ async def get_currency_config(user: dict = Depends(get_current_user)):
 async def update_currency_config(payload: dict, user: dict = Depends(require_roles("propietario"))):
     display=payload.get("display_currency","dual");reference=payload.get("price_reference","usd")
     if display not in ("dual","usd","bs"): raise HTTPException(400,"Moneda de visualización inválida")
-    if reference not in ("usd","bs"): raise HTTPException(400,"Moneda de referencia inválida")
+    if reference not in ("usd","eur"): raise HTTPException(400,"Moneda de comparación inválida")
     await db.businesses.update_one({"id":user["business_id"]},{"$set":{"display_currency":display,"price_reference":reference}})
     return {"display_currency":display,"price_reference":reference,"dual_currency":True}
 
@@ -51,7 +52,7 @@ async def list_team(user: dict = Depends(require_roles("propietario"))):
     members=await db.users.find({"business_id":user["business_id"]},{"_id":0,"password_hash":0}).sort("created_at",1).to_list(100);return {"team":[public_user(m) for m in members]}
 
 @router.post("/team")
-async def add_team_member(data: TeamUserIn,user: dict = Depends(require_roles("propietario"))):
+async def add_team_member(data: TeamUserIn,user:dict=Depends(require_roles("propietario"))):
     if data.role not in ("administrador","vendedor"): raise HTTPException(400,"Rol inválido: usa administrador o vendedor")
     email=data.email.lower()
     if await db.users.find_one({"email":email}): raise HTTPException(400,"Ya existe una cuenta con este correo")
