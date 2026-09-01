@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Plus, ShieldCheck, Store, Trash2, TrendingUp, Users, Wallet } from "lucide-react";
+import { Plus, ShieldCheck, Store, Trash2, TrendingUp, Users, Wallet, CreditCard, Clock3, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import { fmtDate, fmtMoney, fmtNum } from "../lib/format";
@@ -11,201 +11,38 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Switch } from "../components/ui/switch";
 
-const PLATFORM_CATEGORIES = [
-  { value: "infraestructura", label: "Infraestructura (servidores)" },
-  { value: "marketing", label: "Marketing" },
-  { value: "soporte", label: "Soporte" },
-  { value: "licencias", label: "Licencias y herramientas" },
-  { value: "otros", label: "Otros" },
-];
-const CAT_LABELS = Object.fromEntries(PLATFORM_CATEGORIES.map((c) => [c.value, c.label]));
+const CATS=[{value:"infraestructura",label:"Infraestructura"},{value:"marketing",label:"Marketing"},{value:"soporte",label:"Soporte"},{value:"licencias",label:"Licencias"},{value:"otros",label:"Otros"}];
+const CAT_LABELS=Object.fromEntries(CATS.map(c=>[c.value,c.label]));
+const EMPTY_PLAN={name:"",description:"",monthly_price_usd:"",active:true};
 
-export default function Plataforma() {
-  const [data, setData] = useState(null);
-  const [expenses, setExpenses] = useState([]);
-  const [open, setOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ category: "infraestructura", description: "", amount: "", date: "" });
-
-  const load = useCallback(() => {
-    api.get("/platform/overview").then((r) => setData(r.data)).catch((e) => toast.error(apiError(e)));
-    api.get("/platform/expenses").then((r) => setExpenses(r.data.expenses)).catch(() => {});
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  const toggle = async (b, active) => {
-    try {
-      await api.put(`/platform/businesses/${b.id}/status`, { active });
-      toast.success(active ? `"${b.name}" habilitado` : `"${b.name}" deshabilitado`);
-      load();
-    } catch (e) {
-      toast.error(apiError(e));
-    }
-  };
-
-  const addExpense = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      await api.post("/platform/expenses", { ...form, amount: Number(form.amount), date: form.date || null });
-      toast.success("Gasto de plataforma registrado");
-      setOpen(false);
-      setForm({ category: "infraestructura", description: "", amount: "", date: "" });
-      load();
-    } catch (err) {
-      toast.error(apiError(err));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const removeExpense = async (exp) => {
-    try {
-      await api.delete(`/platform/expenses/${exp.id}`);
-      toast.success("Gasto eliminado");
-      load();
-    } catch (err) {
-      toast.error(apiError(err));
-    }
-  };
-
-  if (!data) {
-    return <div className="grid grid-cols-1 md:grid-cols-4 gap-4">{[...Array(4)].map((_, i) => <div key={i} className="h-32 bg-card border border-border rounded-2xl animate-pulse" />)}</div>;
-  }
-  const s = data.stats;
-
-  return (
-    <div className="space-y-5" data-testid="plataforma-page">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="font-heading text-3xl font-extrabold tracking-tight text-slate-900 flex items-center gap-2">
-            <ShieldCheck className="w-7 h-7 text-primary" /> Plataforma
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">Control de los negocios registrados y los gastos de operación de ControlPyme.</p>
-        </div>
-        <Button data-testid="platform-new-expense-btn" onClick={() => setOpen(true)} className="rounded-xl">
-          <Plus className="w-4 h-4 mr-1.5" /> Gasto de plataforma
-        </Button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard testid="plat-total" title="Negocios registrados" value={fmtNum(s.total)} icon={Store} />
-        <StatCard testid="plat-activos" title="Cuentas activas" value={fmtNum(s.activos)} icon={Users} delay={60}
-          hint={s.inactivos ? `${s.inactivos} deshabilitada(s)` : "Todas habilitadas"} />
-        <StatCard testid="plat-nuevos" title="Nuevos (30 días)" value={fmtNum(s.nuevos_30)} icon={TrendingUp} delay={120} />
-        <StatCard testid="plat-gastos" title="Gastos plataforma (mes)" value={fmtMoney(s.gastos_mes, "USD")} icon={Wallet} delay={180}
-          hint={Object.entries(s.gastos_por_categoria).map(([c, v]) => `${CAT_LABELS[c] || c}: ${fmtMoney(v, "USD")}`).join(" · ") || "Sin gastos este mes"} />
-      </div>
-
-      <div className="bg-card border border-border rounded-2xl overflow-hidden" data-testid="platform-businesses-card">
-        <div className="px-5 py-4 border-b border-border">
-          <h3 className="font-heading font-bold text-slate-800">Negocios registrados</h3>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm" data-testid="platform-businesses-table">
-            <thead>
-              <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b border-border bg-secondary/50">
-                <th className="px-5 py-3 font-semibold">Negocio</th>
-                <th className="px-4 py-3 font-semibold">Dueño</th>
-                <th className="px-4 py-3 font-semibold">Registrado</th>
-                <th className="px-4 py-3 font-semibold text-right">Productos</th>
-                <th className="px-4 py-3 font-semibold text-right">Ventas</th>
-                <th className="px-4 py-3 font-semibold text-center">Cuenta activa</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {data.businesses.map((b) => (
-                <tr key={b.id} data-testid={`platform-business-${b.id}`} className="hover:bg-secondary/40 transition-colors">
-                  <td className="px-5 py-3">
-                    <p className="font-medium text-slate-800">{b.name}</p>
-                    <p className="text-xs text-muted-foreground capitalize">{b.type}</p>
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    <p className="text-sm">{b.owner_name}</p>
-                    <p className="text-xs text-muted-foreground">{b.owner_email}</p>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{fmtDate(b.created_at)}</td>
-                  <td className="px-4 py-3 text-right font-num">{fmtNum(b.products_count)}</td>
-                  <td className="px-4 py-3 text-right font-num">{fmtNum(b.sales_count)}</td>
-                  <td className="px-4 py-3 text-center">
-                    <Switch
-                      data-testid={`platform-toggle-${b.id}`}
-                      checked={b.active}
-                      onCheckedChange={(v) => toggle(b, v)}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="bg-card border border-border rounded-2xl overflow-hidden" data-testid="platform-expenses-card">
-        <div className="px-5 py-4 border-b border-border">
-          <h3 className="font-heading font-bold text-slate-800">Gastos de la plataforma</h3>
-        </div>
-        {expenses.length === 0 ? (
-          <p className="p-10 text-center text-sm text-muted-foreground">Aún no registras gastos de operación (servidores, marketing, herramientas…).</p>
-        ) : (
-          <div className="divide-y divide-border">
-            {expenses.map((e) => (
-              <div key={e.id} className="px-5 py-3 flex items-center gap-3" data-testid={`platform-expense-${e.id}`}>
-                <span className="text-xs bg-secondary px-2 py-0.5 rounded-full shrink-0">{CAT_LABELS[e.category] || e.category}</span>
-                <span className="flex-1 text-sm text-slate-700 truncate">{e.description}</span>
-                <span className="text-xs text-muted-foreground whitespace-nowrap">{fmtDate(e.created_at)}</span>
-                <span className="font-num font-semibold text-rose-700">−{fmtMoney(e.amount, "USD")}</span>
-                <button data-testid={`platform-expense-delete-${e.id}`} onClick={() => removeExpense(e)} className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 transition-colors">
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent aria-describedby={undefined} className="max-w-md" data-testid="platform-expense-dialog">
-          <DialogHeader>
-            <DialogTitle className="font-heading">Gasto de la plataforma</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={addExpense} className="space-y-4">
-            <div className="space-y-1.5">
-              <Label>Categoría *</Label>
-              <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
-                <SelectTrigger data-testid="platform-expense-category-select"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {PLATFORM_CATEGORIES.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Descripción *</Label>
-              <Input data-testid="platform-expense-description-input" required value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Ej. Servidor cloud, mes de junio" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Monto (USD) *</Label>
-                <Input data-testid="platform-expense-amount-input" type="number" min="0.01" step="any" required
-                  value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Fecha</Label>
-                <Input data-testid="platform-expense-date-input" type="date" value={form.date}
-                  onChange={(e) => setForm({ ...form, date: e.target.value })} />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="ghost" data-testid="platform-expense-cancel" onClick={() => setOpen(false)}>Cancelar</Button>
-              <Button type="submit" data-testid="platform-expense-submit" disabled={saving} className="rounded-xl">
-                {saving ? "Guardando…" : "Registrar"}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
+export default function Plataforma(){
+ const [data,setData]=useState(null),[expenses,setExpenses]=useState([]),[plans,setPlans]=useState([]),[subs,setSubs]=useState([]),[pending,setPending]=useState([]),[billing,setBilling]=useState(null);
+ const [tab,setTab]=useState("resumen"),[open,setOpen]=useState(false),[planOpen,setPlanOpen]=useState(false),[saving,setSaving]=useState(false),[editingPlan,setEditingPlan]=useState(null);
+ const [form,setForm]=useState({category:"infraestructura",description:"",amount:"",date:""}),[planForm,setPlanForm]=useState(EMPTY_PLAN);
+ const load=useCallback(async()=>{try{const [o,e,p,s,u,b]=await Promise.all([api.get("/platform/overview"),api.get("/platform/expenses"),api.get("/platform/plans"),api.get("/platform/subscriptions"),api.get("/platform/pending-users"),api.get("/platform/billing-metrics")]);setData(o.data);setExpenses(e.data.expenses||[]);setPlans(p.data.plans||[]);setSubs(s.data.subscriptions||[]);setPending(u.data.users||[]);setBilling(b.data)}catch(e){toast.error(apiError(e))}},[]);
+ useEffect(()=>{load()},[load]);
+ const toggle=async(b,active)=>{try{await api.put(`/platform/businesses/${b.id}/status`,{active});toast.success(active?"Negocio habilitado":"Negocio deshabilitado");load()}catch(e){toast.error(apiError(e))}};
+ const addExpense=async e=>{e.preventDefault();setSaving(true);try{await api.post("/platform/expenses",{...form,amount:Number(form.amount),date:form.date||null});toast.success("Gasto registrado");setOpen(false);setForm({category:"infraestructura",description:"",amount:"",date:""});load()}catch(x){toast.error(apiError(x))}finally{setSaving(false)}};
+ const removeExpense=async x=>{try{await api.delete(`/platform/expenses/${x.id}`);toast.success("Gasto eliminado");load()}catch(e){toast.error(apiError(e))}};
+ const savePlan=async e=>{e.preventDefault();setSaving(true);try{const body={...planForm,monthly_price_usd:Number(planForm.monthly_price_usd)};if(editingPlan)await api.put(`/platform/plans/${editingPlan.id}`,body);else await api.post("/platform/plans",body);toast.success(editingPlan?"Plan actualizado":"Plan creado");setPlanOpen(false);setEditingPlan(null);setPlanForm(EMPTY_PLAN);load()}catch(x){toast.error(apiError(x))}finally{setSaving(false)}};
+ const deletePlan=async p=>{if(!window.confirm(`¿Eliminar el plan ${p.name}?`))return;try{await api.delete(`/platform/plans/${p.id}`);toast.success("Plan eliminado");load()}catch(e){toast.error(apiError(e))}};
+ const approve=async(u,approved)=>{try{await api.put(`/platform/users/${u.id}/approval`,{approved});toast.success(approved?"Usuario aprobado":"Aprobación retirada");load()}catch(e){toast.error(apiError(e))}};
+ const changeSub=async(s,status)=>{try{await api.patch(`/platform/subscriptions/${s.id}/status`,null,{params:{status}});toast.success("Suscripción actualizada");load()}catch(e){toast.error(apiError(e))}};
+ if(!data)return <div className="p-8 text-sm text-muted-foreground">Cargando plataforma…</div>;
+ const s=data.stats;
+ const tabs=[['resumen','Resumen'],['clientes','Clientes'],['planes','Planes y precios'],['cobros','Cobros'],['gastos','Costos']];
+ return <div className="space-y-5" data-testid="plataforma-page">
+  <div className="flex items-center justify-between gap-3 flex-wrap"><div><h1 className="font-heading text-3xl font-extrabold text-slate-900 flex items-center gap-2"><ShieldCheck className="w-7 h-7 text-primary"/> Plataforma</h1><p className="text-sm text-muted-foreground mt-1">Gobernanza, clientes, planes, cobros y costos de CuadrApp.</p></div><Button variant="outline" onClick={load} className="rounded-xl"><RefreshCw className="w-4 h-4 mr-2"/>Actualizar</Button></div>
+  <div className="flex gap-1 p-1 bg-secondary rounded-xl overflow-x-auto">{tabs.map(([v,l])=><button key={v} onClick={()=>setTab(v)} className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap ${tab===v?'bg-background shadow-sm text-slate-900':'text-muted-foreground'}`}>{l}</button>)}</div>
+  {tab==='resumen'&&<>
+   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"><StatCard title="Clientes registrados" value={fmtNum(s.total)} icon={Store}/><StatCard title="Activos" value={fmtNum(s.activos)} icon={Users} delay={60}/><StatCard title="MRR" value={fmtMoney(s.mrr_usd||0,'USD')} icon={CreditCard} delay={120} hint="Ingreso mensual recurrente"/><StatCard title="Neto proyectado" value={fmtMoney(billing?.projected_net_usd||0,'USD')} icon={TrendingUp} delay={180} hint={`Ingresos ${fmtMoney(billing?.projected_revenue_usd||0,'USD')} − costos ${fmtMoney(billing?.platform_costs_usd||0,'USD')}`}/></div>
+   <div className="grid md:grid-cols-3 gap-4"><div className="bg-card border rounded-2xl p-5"><p className="text-sm text-muted-foreground">Nuevos últimos 30 días</p><p className="text-3xl font-bold mt-2">{fmtNum(s.nuevos_30)}</p></div><div className="bg-card border rounded-2xl p-5"><p className="text-sm text-muted-foreground">Suscripciones activas</p><p className="text-3xl font-bold mt-2">{fmtNum(s.suscripciones_activas||billing?.active_customers||0)}</p></div><div className="bg-card border rounded-2xl p-5"><p className="text-sm text-muted-foreground">Próximos cobros / vencidos</p><p className="text-3xl font-bold mt-2">{fmtNum(billing?.due_soon?.length||0)}</p></div></div>
+  </>}
+  {tab==='clientes'&&<div className="space-y-4"><div className="bg-card border rounded-2xl overflow-hidden"><div className="px-5 py-4 border-b"><h3 className="font-heading font-bold">Negocios registrados</h3></div><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left text-xs uppercase text-muted-foreground bg-secondary/50"><th className="px-5 py-3">Negocio</th><th>Dueño</th><th>Plan</th><th>Vencimiento</th><th>Productos</th><th>Ventas</th><th>Activo</th></tr></thead><tbody className="divide-y">{data.businesses.map(b=><tr key={b.id} className="hover:bg-secondary/30"><td className="px-5 py-3"><b>{b.name}</b><div className="text-xs text-muted-foreground">{b.owner_email}</div></td><td>{b.owner_name}</td><td>{b.plan_name||'Sin plan'}</td><td>{b.subscription_due_date?fmtDate(b.subscription_due_date):'—'}</td><td>{fmtNum(b.products_count)}</td><td>{fmtNum(b.sales_count)}</td><td><Switch checked={b.active} onCheckedChange={v=>toggle(b,v)}/></td></tr>)}</tbody></table></div></div><div className="bg-card border rounded-2xl p-5"><h3 className="font-heading font-bold mb-4">Solicitudes de acceso pendientes ({pending.length})</h3>{pending.length===0?<p className="text-sm text-muted-foreground">No hay usuarios pendientes.</p>:pending.map(u=><div key={u.id} className="flex items-center gap-3 py-3 border-b last:border-0"><div className="flex-1"><b>{u.name||u.email}</b><div className="text-xs text-muted-foreground">{u.email}</div></div><Button size="sm" onClick={()=>approve(u,true)}>Aprobar</Button></div>)}</div></div>}
+  {tab==='planes'&&<div className="space-y-4"><div className="flex justify-end"><Button onClick={()=>{setEditingPlan(null);setPlanForm(EMPTY_PLAN);setPlanOpen(true)}} className="rounded-xl"><Plus className="w-4 h-4 mr-2"/>Nuevo plan</Button></div><div className="grid md:grid-cols-2 gap-4">{plans.map(p=><div key={p.id} className="bg-card border rounded-2xl p-5"><div className="flex justify-between"><div><h3 className="font-heading text-xl font-bold">{p.name}</h3><p className="text-sm text-muted-foreground mt-1">{p.description||'Plan para negocios'}</p></div><span className={`text-xs px-2 py-1 rounded-full ${p.active?'bg-emerald-100 text-emerald-700':'bg-secondary text-muted-foreground'}`}>{p.active?'Activo':'Inactivo'}</span></div><p className="text-3xl font-bold mt-5">{fmtMoney(p.monthly_price_usd,'USD')}<span className="text-sm font-normal text-muted-foreground"> / mes</span></p><div className="flex gap-2 mt-5"><Button variant="outline" onClick={()=>{setEditingPlan(p);setPlanForm({name:p.name,description:p.description||'',monthly_price_usd:p.monthly_price_usd,active:p.active});setPlanOpen(true)}}>Editar</Button><Button variant="ghost" onClick={()=>deletePlan(p)} className="text-rose-600">Eliminar</Button></div></div>)}</div>{plans.length===0&&<div className="bg-card border rounded-2xl p-10 text-center text-sm text-muted-foreground">Crea primero los planes Básico y Premium.</div>}</div>}
+  {tab==='cobros'&&<div className="bg-card border rounded-2xl overflow-hidden"><div className="px-5 py-4 border-b flex justify-between"><div><h3 className="font-heading font-bold">Cobros y suscripciones</h3><p className="text-xs text-muted-foreground mt-1">MRR actual: {fmtMoney(billing?.mrr_usd||0,'USD')}</p></div></div><div className="divide-y">{subs.length===0?<p className="p-10 text-center text-sm text-muted-foreground">Aún no hay suscripciones.</p>:subs.map(x=><div key={x.id} className="px-5 py-4 flex items-center gap-3 flex-wrap"><div className="flex-1 min-w-[220px]"><b>{x.plan_name}</b><div className="text-xs text-muted-foreground">{x.business_id}</div></div><span className="font-semibold">{fmtMoney(x.monthly_price_usd,'USD')}/mes</span><span className="text-sm flex items-center gap-1"><Clock3 className="w-4 h-4"/>{x.due_date||'Sin fecha'}</span><Select value={x.status} onValueChange={v=>changeSub(x,v)}><SelectTrigger className="w-32"><SelectValue/></SelectTrigger><SelectContent>{['activo','pendiente','vencido','cancelado'].map(v=><SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent></Select></div>)}</div></div>}
+  {tab==='gastos'&&<><div className="flex justify-end"><Button onClick={()=>setOpen(true)} className="rounded-xl"><Plus className="w-4 h-4 mr-2"/>Gasto de plataforma</Button></div><div className="bg-card border rounded-2xl overflow-hidden"><div className="px-5 py-4 border-b"><h3 className="font-heading font-bold">Costos de operación</h3></div>{expenses.length===0?<p className="p-10 text-center text-sm text-muted-foreground">Sin gastos registrados.</p>:expenses.map(x=><div key={x.id} className="px-5 py-3 flex items-center gap-3 border-b last:border-0"><span className="text-xs bg-secondary px-2 py-1 rounded-full">{CAT_LABELS[x.category]||x.category}</span><span className="flex-1 truncate">{x.description}</span><span className="text-xs text-muted-foreground">{fmtDate(x.created_at)}</span><b className="text-rose-700">−{fmtMoney(x.amount,'USD')}</b><button onClick={()=>removeExpense(x)}><Trash2 className="w-4 h-4 text-slate-400"/></button></div>)}</div></>}
+  <Dialog open={open} onOpenChange={setOpen}><DialogContent aria-describedby={undefined}><DialogHeader><DialogTitle>Gasto de plataforma</DialogTitle></DialogHeader><form onSubmit={addExpense} className="space-y-4"><Label>Categoría</Label><Select value={form.category} onValueChange={v=>setForm({...form,category:v})}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{CATS.map(c=><SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent></Select><Label>Descripción</Label><Input required value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/><div className="grid grid-cols-2 gap-3"><div><Label>Monto USD</Label><Input type="number" min="0.01" step="any" required value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})}/></div><div><Label>Fecha</Label><Input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></div></div><div className="flex justify-end gap-2"><Button type="button" variant="ghost" onClick={()=>setOpen(false)}>Cancelar</Button><Button disabled={saving}>{saving?'Guardando…':'Registrar'}</Button></div></form></DialogContent></Dialog>
+  <Dialog open={planOpen} onOpenChange={setPlanOpen}><DialogContent aria-describedby={undefined}><DialogHeader><DialogTitle>{editingPlan?'Editar plan':'Nuevo plan'}</DialogTitle></DialogHeader><form onSubmit={savePlan} className="space-y-4"><div><Label>Nombre</Label><Input required placeholder="Básico o Premium" value={planForm.name} onChange={e=>setPlanForm({...planForm,name:e.target.value})}/></div><div><Label>Descripción</Label><Input value={planForm.description} onChange={e=>setPlanForm({...planForm,description:e.target.value})}/></div><div><Label>Precio mensual USD</Label><Input type="number" min="0" step="0.01" required value={planForm.monthly_price_usd} onChange={e=>setPlanForm({...planForm,monthly_price_usd:e.target.value})}/></div><div className="flex items-center gap-2"><Switch checked={planForm.active} onCheckedChange={v=>setPlanForm({...planForm,active:v})}/><Label>Plan activo</Label></div><div className="flex justify-end gap-2"><Button type="button" variant="ghost" onClick={()=>setPlanOpen(false)}>Cancelar</Button><Button disabled={saving}>{saving?'Guardando…':'Guardar plan'}</Button></div></form></DialogContent></Dialog>
+ </div>;
 }
