@@ -6,6 +6,7 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from config import settings
 from database import client,db
+from production_migrations import ensure_managed_accounts_approved
 from routes_ai import router as ai_router
 from routes_assistant import router as assistant_router
 from routes_auth import router as auth_router
@@ -60,13 +61,7 @@ if settings.APP_ENV == "production":
         raise RuntimeError("CORS no puede usar '*' en production")
 
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=frontend_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app.add_middleware(CORSMiddleware,allow_origins=frontend_origins,allow_credentials=True,allow_methods=["*"],allow_headers=["*"])
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -106,11 +101,8 @@ async def startup():
     await db.platform_billing.create_index([("subscription_id",1),("paid_at",-1)])
     await db.platform_expenses.create_index([("date",1)])
     await db.promotions.create_index([("business_id",1),("created_at",-1)])
-
-    defaults=[
-        {"name":"Básico","description":"Para negocios que comienzan a digitalizar su operación.","monthly_price_usd":9.99,"active":True,"features":["Inventario","Ventas","Compras","Dashboard"]},
-        {"name":"Premium","description":"Para negocios que necesitan análisis, equipo y asesoría inteligente.","monthly_price_usd":19.99,"active":True,"features":["Todo Básico","Finanzas","Reportes","Equipo","IA"]},
-    ]
+    await ensure_managed_accounts_approved()
+    defaults=[{"name":"Básico","description":"Para negocios que comienzan a digitalizar su operación.","monthly_price_usd":9.99,"active":True,"features":["Inventario","Ventas","Compras","Dashboard"]},{"name":"Premium","description":"Para negocios que necesitan análisis, equipo y asesoría inteligente.","monthly_price_usd":19.99,"active":True,"features":["Todo Básico","Finanzas","Reportes","Equipo","IA"]}]
     for p in defaults:
         await db.platform_plans.update_one({"name":p["name"]},{"$setOnInsert":{"id":str(uuid.uuid4()),**p,"created_at":datetime.now(timezone.utc).isoformat()}},upsert=True)
     await seed_all()
