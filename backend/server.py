@@ -1,4 +1,6 @@
 import logging
+import uuid
+from datetime import datetime, timezone
 from fastapi import APIRouter, FastAPI
 from starlette.middleware.cors import CORSMiddleware
 from config import settings
@@ -34,7 +36,6 @@ app.add_middleware(CORSMiddleware, allow_origins=frontend_origins, allow_credent
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-
 @app.on_event("startup")
 async def startup():
     await db.users.create_index("email", unique=True)
@@ -45,16 +46,15 @@ async def startup():
     await db.expenses.create_index([("business_id", 1), ("created_at", -1)])
     await db.inventory_movements.create_index([("business_id", 1), ("created_at", -1)])
     await db.assistant_messages.create_index([("business_id", 1), ("created_at", 1)])
-    await db.users.update_many({"approved": {"$exists": False}}, {"$set": {"approved": True, "approved_at": now_iso() if False else None}})
+    await db.users.update_many({"approved": {"$exists": False}}, {"$set": {"approved": True}})
     defaults = [
         {"name": "Básico", "description": "Para negocios que comienzan a digitalizar su operación.", "monthly_price_usd": 9.99, "active": True, "features": ["Inventario", "Ventas", "Compras", "Dashboard"]},
         {"name": "Premium", "description": "Para negocios que necesitan análisis, equipo y asesoría inteligente.", "monthly_price_usd": 19.99, "active": True, "features": ["Todo Básico", "Finanzas", "Reportes", "Equipo", "IA"]},
     ]
     for plan in defaults:
-        await db.platform_plans.update_one({"name": plan["name"]}, {"$setOnInsert": {"id": __import__("uuid").uuid4().__str__(), **plan, "created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()}}, upsert=True)
+        await db.platform_plans.update_one({"name": plan["name"]}, {"$setOnInsert": {"id": str(uuid.uuid4()), **plan, "created_at": datetime.now(timezone.utc).isoformat()}}, upsert=True)
     await seed_all()
     logger.info("ControlPyme API lista")
-
 
 @app.on_event("shutdown")
 async def shutdown_db_client(): client.close()
