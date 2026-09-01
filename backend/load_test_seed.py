@@ -12,14 +12,8 @@ from datetime import datetime, timedelta, timezone
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
-
 DB_URL = os.getenv("MONGO_URL") or os.getenv("MONGODB_URL")
 DB_NAME = os.getenv("DB_NAME", "cuadrapp")
-
-PRODUCTS_PER_BUSINESS = 100
-SALES_PER_BUSINESS = 1000
-MOVEMENTS_PER_BUSINESS = 3000
-EXPENSES_PER_BUSINESS = 100
 
 
 def uid():
@@ -37,6 +31,7 @@ async def main():
     parser.add_argument("--sales", type=int, default=1000)
     parser.add_argument("--movements", type=int, default=3000)
     parser.add_argument("--expenses", type=int, default=100)
+    parser.add_argument("--owner-email", default="", help="Asocia el primer negocio LOADTEST al usuario existente")
     parser.add_argument("--reset", action="store_true")
     args = parser.parse_args()
 
@@ -45,8 +40,8 @@ async def main():
 
     client = AsyncIOMotorClient(DB_URL, maxPoolSize=100, serverSelectionTimeoutMS=10000)
     db = client[DB_NAME]
-
     prefix = "LOADTEST-"
+
     if args.reset:
         businesses = await db.businesses.find({"name": {"$regex": f"^{prefix}"}}, {"id": 1}).to_list(None)
         ids = [x["id"] for x in businesses]
@@ -54,7 +49,10 @@ async def main():
             for collection in ["products", "sales", "purchases", "expenses", "inventory_movements"]:
                 await db[collection].delete_many({"business_id": {"$in": ids}})
             await db.businesses.delete_many({"id": {"$in": ids}})
+            if args.owner_email:
+                await db.users.update_one({"email": args.owner_email.lower()}, {"$set": {"business_id": None}})
         print(f"Reset completado: {len(ids)} negocios LOADTEST eliminados")
+        client.close()
         return
 
     categories = ["Alimentos", "Bebidas", "Limpieza", "Hogar", "Ferretería", "Cuidado personal", "Oficina"]
@@ -103,13 +101,12 @@ async def main():
         movements = []
         for i in range(args.movements):
             p = rng.choice(products)
-            qty = rng.randint(1, 20)
             movements.append({
-                "id": uid(), "business_id": bid, "product_id": p["id"],
-                "product_name": p["name"], "type": rng.choice(["entrada", "salida"]),
+                "id": uid(), "business_id": bid, "product_id": p["id"], "product_name": p["name"],
+                "type": rng.choice(["entrada", "salida"]),
                 "reason": rng.choice(["carga_inicial", "compra", "ajuste", "venta"]),
-                "quantity": qty, "stock_after": rng.randint(0, 500),
-                "user_email": "loadtest@cuadrapp.local", "notes": "LOADTEST",
+                "quantity": rng.randint(1, 20), "stock_after": rng.randint(0, 500),
+                "user_email": args.owner_email or "loadtest@cuadrapp.local", "notes": "LOADTEST",
                 "created_at": (datetime.now(timezone.utc) - timedelta(days=rng.randint(0, 90))).isoformat(),
             })
         await db.inventory_movements.insert_many(movements)
@@ -117,16 +114,14 @@ async def main():
         sales = []
         for i in range(args.sales):
             chosen = rng.sample(products, k=rng.randint(1, min(4, len(products))))
-            items = []
-            total = 0.0
-            cost_total = 0.0
+            items, total, cost_total = [], 0.0, 0.0
             for p in chosen:
                 qty = rng.randint(1, 5)
                 line = round(p["sale_price"] * qty, 2)
                 items.append({
                     "product_id": p["id"], "name": p["name"], "quantity": qty,
-                    "unit_price": p["sale_price"], "discount": 0,
-                    "cost": p["purchase_price"], "line_total": line,
+                    "unit_price": p["sale_price"], "discount": 0, "cost": p["purchase_price"],
+                    "line_total": line,
                 })
                 total += line
                 cost_total += p["purchase_price"] * qty
@@ -136,12 +131,11 @@ async def main():
                 "profit": round(total - cost_total, 2),
                 "payment_method": rng.choice(["efectivo", "tarjeta", "transferencia", "pago móvil"]),
                 "customer_name": None, "customer_rif": None,
-                "user_email": "loadtest@cuadrapp.local",
-                "test_data": True,
+                "user_email": args.owner_email or "loadtest@cuadrapp.local", "test_data": True,
                 "created_at": (datetime.now(timezone.utc) - timedelta(days=rng.randint(0, 180))).isoformat(),
             })
         for i in range(0, len(sales), 500):
-            await db.sales.insert_many(sales[i:i+500])
+            await db.sales.insert_many(sales[i:i + 500])
 
         expenses = []
         for i in range(args.expenses):
@@ -151,14 +145,21 @@ async def main():
                 "description": f"LOADTEST gasto {i+1}",
                 "amount": round(rng.uniform(10, 500), 2),
                 "date": (datetime.now(timezone.utc) - timedelta(days=rng.randint(0, 180))).date().isoformat(),
-                "user_email": "loadtest@cuadrapp.local",
-                "created_at": now(),
+                "user_email": args.owner_email or "loadtest@cuadrapp.local", "created_at": now(),
             })
         await db.expenses.insert_many(expenses)
 
         print(f"{business['name']}: {args.products} productos, {args.sales} ventas, {args.movements} movimientos, {args.expenses} gastos")
 
-    # Helpful indexes for the test workload; existing indexes remain untouched.
+    if args.owner_email and created_business_ids:
+        email = args.owner_email.lower()
+        user = await db.users.find_one({"email": email}, {"id": 1})
+        if not user:
+            raise RuntimeError(f"No existe el usuario {args.owner_email}")
+        await db.users.update_one({"email": email}, {"$set": {"business_id": created_business_ids[0]}})
+        await db.businesses.update_one({"id": created_business_ids[0]}, {"$set": {"owner_id": user["id"]}})
+        print(f"Usuario {args.owner_email} asociado a {created_business_ids[0]}")
+
     await db.products.create_index([("business_id", 1), ("status", 1)], name="loadtest_products_business_status")
     await db.sales.create_index([("business_id", 1), ("created_at", -1)], name="loadtest_sales_business_date")
     await db.inventory_movements.create_index([("business_id", 1), ("created_at", -1)], name="loadtest_movements_business_date")
