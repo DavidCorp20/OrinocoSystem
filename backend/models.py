@@ -42,3 +42,13 @@ class PlatformSubscriptionIn(BaseModel): plan_id: str; status: str = Field(defau
 class PlatformBillingIn(BaseModel): subscription_id: str; amount: float = Field(gt=0); payment_method: str = Field(default="transferencia", min_length=2, max_length=40); paid_at: Optional[str] = None; notes: Optional[str] = Field(default=None, max_length=300)
 class UserApprovalIn(BaseModel): approved: bool
 class AdminPasswordResetIn(BaseModel): password: str = Field(min_length=8, max_length=128)
+class CashDenominationIn(BaseModel): value: float = Field(gt=0); quantity: int = Field(ge=0)
+class CashClosureIn(BaseModel):
+    date: str = Field(min_length=10, max_length=10)
+    opening_cash: float = Field(default=0, ge=0)
+    counted_cash: Optional[float] = Field(default=None, ge=0)
+    denominations: List[CashDenominationIn] = []
+    other_cash_in: float = Field(default=0, ge=0)
+    other_cash_out: float = Field(default=0, ge=0)
+    observations: Optional[str] = Field(default=None, max_length=1000)
+    use_previous_closing: bool = False
