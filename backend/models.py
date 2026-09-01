@@ -15,8 +15,8 @@ class LoginIn(BaseModel):
 
 class InitialProduct(BaseModel):
     name: str
-    sale_price: float = 0
     purchase_price: float = 0
+    sale_price: float = 0
     stock: float = 0
     category: Optional[str] = None
 
@@ -32,7 +32,7 @@ class SettingsIn(BaseModel):
     rif: Optional[str] = Field(default=None, max_length=20)
     address: Optional[str] = Field(default=None, max_length=200)
     phone: Optional[str] = Field(default=None, max_length=30)
-    bcv_mode: Optional[str] = None  # auto | manual
+    bcv_mode: Optional[str] = None
     bcv_rate: Optional[float] = Field(default=None, gt=0)
 
 
@@ -40,7 +40,7 @@ class TeamUserIn(BaseModel):
     name: str = Field(min_length=2, max_length=80)
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
-    role: str  # administrador | vendedor
+    role: str
 
 
 class ProductIn(BaseModel):
@@ -60,7 +60,7 @@ class ProductIn(BaseModel):
 
 class MovementIn(BaseModel):
     product_id: str
-    type: str  # entrada | salida
+    type: str
     reason: str
     quantity: float = Field(gt=0)
     notes: Optional[str] = None
@@ -114,3 +114,19 @@ class PlatformExpenseIn(BaseModel):
     description: str = Field(min_length=1, max_length=200)
     amount: float = Field(gt=0)
     date: Optional[str] = None
+
+
+class PlatformPlanIn(BaseModel):
+    name: str = Field(min_length=2, max_length=60)
+    description: Optional[str] = Field(default=None, max_length=300)
+    monthly_price_usd: float = Field(gt=0)
+    active: bool = True
+    features: List[str] = []
+
+
+class UserApprovalIn(BaseModel):
+    approved: bool
+
+
+class AdminPasswordResetIn(BaseModel):
+    password: str = Field(min_length=8, max_length=128)
