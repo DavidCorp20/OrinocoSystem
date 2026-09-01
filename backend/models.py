@@ -103,6 +103,10 @@ class ObligationIn(BaseModel):
     amount: float = Field(gt=0)
     due_date: str
     notes: Optional[str] = Field(default=None, max_length=300)
+class ObligationPaymentIn(BaseModel):
+    amount: float = Field(gt=0)
+    payment_method: str = Field(default="efectivo", min_length=2, max_length=30)
+    notes: Optional[str] = Field(default=None, max_length=300)
 class ChatIn(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
 class BusinessStatusIn(BaseModel):
@@ -123,6 +127,12 @@ class PlatformSubscriptionIn(BaseModel):
     status: str = Field(default="activo", pattern="^(activo|pendiente|vencido|cancelado)$")
     due_date: Optional[str] = None
     monthly_price_usd: Optional[float] = Field(default=None, gt=0)
+class PlatformBillingIn(BaseModel):
+    subscription_id: str
+    amount: float = Field(gt=0)
+    payment_method: str = Field(default="transferencia", min_length=2, max_length=40)
+    paid_at: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=300)
 class UserApprovalIn(BaseModel):
     approved: bool
 class AdminPasswordResetIn(BaseModel):
