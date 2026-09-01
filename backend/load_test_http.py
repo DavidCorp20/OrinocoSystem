@@ -1,4 +1,9 @@
-"""Safe read-only HTTP load test for the CuadraApp backend."""
+"""Controlled HTTP load test for CuadraApp.
+
+Targets the public Railway backend. By default it performs authenticated
+read-only requests. Use a dedicated approved test account; do not commit
+credentials to source control.
+"""
 import argparse
 import asyncio
 import json
@@ -10,15 +15,25 @@ from urllib.parse import urljoin
 import httpx
 
 
-async def worker(client, base_url, token, duration, stats, worker_id):
-    headers = {"Authorization": f"Bearer {token}"} if token else {}
+async def login(client, base_url, email, password):
+    if not email or not password:
+        return
+    response = await client.post(
+        urljoin(base_url.rstrip("/") + "/", "api/auth/login"),
+        json={"email": email, "password": password},
+    )
+    if response.status_code >= 400:
+        raise RuntimeError(f"Login falló: HTTP {response.status_code} - {response.text[:300]}")
+
+
+async def worker(client, base_url, duration, stats, worker_id):
     deadline = time.perf_counter() + duration
-    endpoints = ["/products", "/dashboard", "/expenses", "/sales"]
+    endpoints = ["api/healthz", "api/products", "api/dashboard", "api/expenses", "api/sales"]
     while time.perf_counter() < deadline:
         endpoint = endpoints[(worker_id + int(time.perf_counter() * 10)) % len(endpoints)]
         started = time.perf_counter()
         try:
-            response = await client.get(urljoin(base_url.rstrip("/") + "/", endpoint.lstrip("/")), headers=headers)
+            response = await client.get(urljoin(base_url.rstrip("/") + "/", endpoint))
             elapsed_ms = (time.perf_counter() - started) * 1000
             stats["latencies"].append(elapsed_ms)
             stats["codes"][response.status_code] += 1
@@ -32,20 +47,34 @@ async def worker(client, base_url, token, duration, stats, worker_id):
 async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", required=True, help="Public Railway backend URL")
-    parser.add_argument("--token", default="", help="Valid JWT for a test user")
+    parser.add_argument("--token", default="", help="Valid JWT for a test user (legacy option)")
+    parser.add_argument("--email", default="", help="Dedicated approved test account")
+    parser.add_argument("--password", default="", help="Dedicated test account password")
     parser.add_argument("--users", type=int, default=10)
     parser.add_argument("--duration", type=int, default=30)
     args = parser.parse_args()
 
     stats = {"latencies": [], "codes": Counter(), "errors": 0, "exceptions": []}
-    limits = httpx.Limits(max_connections=max(100, args.users * 2), max_keepalive_connections=max(50, args.users))
+    limits = httpx.Limits(
+        max_connections=max(100, args.users * 2),
+        max_keepalive_connections=max(50, args.users),
+    )
     timeout = httpx.Timeout(15.0, connect=10.0)
+
     async with httpx.AsyncClient(limits=limits, timeout=timeout) as client:
+        if args.email and args.password:
+            await login(client, args.url, args.email, args.password)
+        elif args.token:
+            client.headers.update({"Authorization": f"Bearer {args.token}"})
+
         started = time.perf_counter()
-        await asyncio.gather(*(worker(client, args.url, args.token, args.duration, stats, i) for i in range(args.users)))
+        await asyncio.gather(
+            *(worker(client, args.url, args.duration, stats, i) for i in range(args.users))
+        )
         elapsed = time.perf_counter() - started
 
     latencies = sorted(stats["latencies"])
+
     def percentile(q):
         if not latencies:
             return None
@@ -68,6 +97,7 @@ async def main():
         },
         "status_codes": dict(stats["codes"]),
         "exceptions": dict(Counter(stats["exceptions"])),
+        "authenticated": bool(args.email and args.password or args.token),
     }
     print(json.dumps(result, indent=2))
 
