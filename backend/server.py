@@ -1,11 +1,11 @@
 import logging
 import uuid
-from datetime import datetime,timezone
-from fastapi import APIRouter,FastAPI,Request
+from datetime import datetime, timezone
+from fastapi import APIRouter, FastAPI, Request
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from config import settings
-from database import client,db
+from database import client, db
 from production_migrations import ensure_managed_accounts_approved
 from routes_ai import router as ai_router
 from routes_assistant import router as assistant_router
@@ -25,30 +25,62 @@ from routes_recipes import router as recipes_router
 from routes_promotions import router as promotions_router
 from seed import seed_all
 
-app=FastAPI(title="CuadraApp API")
-api_router=APIRouter(prefix="/api")
+app = FastAPI(title="CuadraApp API")
+api_router = APIRouter(prefix="/api")
+
 
 @api_router.get("/")
 async def root():
-    return {"message":"CuadraApp API"}
+    return {"message": "CuadraApp API"}
+
 
 @api_router.get("/healthz")
 async def healthz():
     await db.command("ping")
-    return {"status":"ok"}
+    return {"status": "ok"}
 
-for r in (auth_router,business_router,products_router,inventory_router,sales_router,purchases_router,expenses_router,dashboard_router,assistant_router,ai_router,rates_router,platform_router,reports_router,obligations_router,recipes_router,promotions_router):
+
+for r in (
+    auth_router,
+    business_router,
+    products_router,
+    inventory_router,
+    sales_router,
+    purchases_router,
+    expenses_router,
+    dashboard_router,
+    assistant_router,
+    ai_router,
+    rates_router,
+    platform_router,
+    reports_router,
+    obligations_router,
+    recipes_router,
+    promotions_router,
+):
     api_router.include_router(r)
 app.include_router(api_router)
 
 
-def normalize_origin(v:str)->str:
+def normalize_origin(v: str) -> str:
     return v.strip().rstrip("/")
 
 
-env_origins=[normalize_origin(o) for o in (settings.CORS_ORIGINS.split(",") if settings.CORS_ORIGINS else []) if o.strip()]
-frontend_origins={normalize_origin(settings.FRONTEND_URL) if settings.FRONTEND_URL else "","https://cuadrapp.up.railway.app","http://localhost:3000","http://127.0.0.1:3000","http://localhost:3001","http://127.0.0.1:3001",*env_origins}
-frontend_origins=list(dict.fromkeys(o for o in frontend_origins if o))
+env_origins = [
+    normalize_origin(o)
+    for o in (settings.CORS_ORIGINS.split(",") if settings.CORS_ORIGINS else [])
+    if o.strip()
+]
+frontend_origins = {
+    normalize_origin(settings.FRONTEND_URL) if settings.FRONTEND_URL else "",
+    "https://cuadrapp.up.railway.app",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    *env_origins,
+}
+frontend_origins = list(dict.fromkeys(o for o in frontend_origins if o))
 
 if settings.APP_ENV == "production":
     if not settings.COOKIE_SECURE:
@@ -61,7 +93,13 @@ if settings.APP_ENV == "production":
         raise RuntimeError("CORS no puede usar '*' en production")
 
 
-app.add_middleware(CORSMiddleware,allow_origins=frontend_origins,allow_credentials=True,allow_methods=["*"],allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=frontend_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -72,40 +110,76 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
         if settings.APP_ENV == "production":
-            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+            response.headers.setdefault(
+                "Strict-Transport-Security",
+                "max-age=31536000; includeSubDomains",
+            )
         return response
 
 
 app.add_middleware(SecurityHeadersMiddleware)
 
-logging.basicConfig(level=logging.INFO,format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-logger=logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 
 @app.on_event("startup")
 async def startup():
-    await db.users.create_index("email",unique=True)
+    await db.users.create_index("email", unique=True)
     await db.login_attempts.create_index("identifier")
-    await db.products.create_index([("business_id",1),("name",1)])
-    await db.products.create_index([("business_id",1),("barcode",1)])
-    await db.sales.create_index([("business_id",1),("created_at",-1)])
-    await db.purchases.create_index([("business_id",1),("created_at",-1)])
-    await db.expenses.create_index([("business_id",1),("created_at",-1)])
-    await db.inventory_movements.create_index([("business_id",1),("created_at",-1)])
-    await db.assistant_messages.create_index([("business_id",1),("created_at",1)])
-    await db.obligations.create_index([("business_id",1),("status",1),("due_date",1)])
-    await db.obligation_payments.create_index([("business_id",1),("obligation_id",1),("paid_at",-1)])
-    await db.platform_subscriptions.create_index([("business_id",1),("status",1)])
-    await db.platform_subscriptions.create_index([("status",1),("due_date",1)])
-    await db.platform_billing.create_index([("business_id",1),("paid_at",-1)])
-    await db.platform_billing.create_index([("subscription_id",1),("paid_at",-1)])
-    await db.platform_expenses.create_index([("date",1)])
-    await db.promotions.create_index([("business_id",1),("created_at",-1)])
+    await db.products.create_index([("business_id", 1), ("name", 1)])
+    await db.products.create_index([("business_id", 1), ("barcode", 1)])
+    await db.sales.create_index([("business_id", 1), ("created_at", -1)])
+    await db.purchases.create_index([("business_id", 1), ("created_at", -1)])
+    await db.expenses.create_index([("business_id", 1), ("created_at", -1)])
+    await db.inventory_movements.create_index([("business_id", 1), ("created_at", -1)])
+    await db.assistant_messages.create_index([("business_id", 1), ("created_at", 1)])
+    await db.obligations.create_index([("business_id", 1), ("status", 1), ("due_date", 1)])
+    await db.obligation_payments.create_index([("business_id", 1), ("obligation_id", 1), ("paid_at", -1)])
+    await db.platform_subscriptions.create_index([("business_id", 1), ("status", 1)])
+    await db.platform_subscriptions.create_index([("status", 1), ("due_date", 1)])
+    await db.platform_billing.create_index([("business_id", 1), ("paid_at", -1)])
+    await db.platform_billing.create_index([("subscription_id", 1), ("paid_at", -1)])
+    await db.platform_expenses.create_index([("date", 1)])
+    await db.promotions.create_index([("business_id", 1), ("created_at", -1)])
     await ensure_managed_accounts_approved()
-    defaults=[{"name":"Básico","description":"Para negocios que comienzan a digitalizar su operación.","monthly_price_usd":9.99,"active":True,"features":["Inventario","Ventas","Compras","Dashboard"]},{"name":"Premium","description":"Para negocios que necesitan análisis, equipo y asesoría inteligente.","monthly_price_usd":19.99,"active":True,"features":["Todo Básico","Finanzas","Reportes","Equipo","IA"]}]
+    defaults = [
+        {
+            "name": "Básico",
+            "description": "Para negocios que comienzan a digitalizar su operación.",
+            "monthly_price_usd": 9.99,
+            "active": True,
+            "features": ["Inventario", "Ventas", "Compras", "Dashboard"],
+        },
+        {
+            "name": "Premium",
+            "description": "Para negocios que necesitan análisis, equipo y asesoría inteligente.",
+            "monthly_price_usd": 19.99,
+            "active": True,
+            "features": ["Todo Básico", "Finanzas", "Reportes", "Equipo", "IA"],
+        },
+    ]
     for p in defaults:
-        await db.platform_plans.update_one({"name":p["name"]},{"$setOnInsert":{"id":str(uuid.uuid4()),**p,"created_at":datetime.now(timezone.utc).isoformat()}},upsert=True)
-    await seed_all()
+        await db.platform_plans.update_one(
+            {"name": p["name"]},
+            {
+                "$setOnInsert": {
+                    "id": str(uuid.uuid4()),
+                    **p,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }
+            },
+            upsert=True,
+        )
+
+    # Demo/seed data is useful locally but must never be created or modified
+    # automatically by a production startup.
+    if settings.APP_ENV != "production":
+        await seed_all()
+
     logger.info("CuadraApp API lista")
 
 
