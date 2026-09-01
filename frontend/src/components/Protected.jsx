@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { Store } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import FirstRunTour from "./FirstRunTour";
 
 export function LoadingScreen() {
   return (
@@ -29,5 +30,11 @@ export default function Protected({ children, requireBusiness = true }) {
   if (status === "guest") return <Navigate to="/auth" replace state={{ from: loc.pathname }} />;
   if (requireBusiness && !business) return <Navigate to="/onboarding" replace />;
   if (!requireBusiness && business) return <Navigate to="/dashboard" replace />;
-  return children;
+
+  return (
+    <>
+      {children}
+      {requireBusiness && business && <FirstRunTour />}
+    </>
+  );
 }
