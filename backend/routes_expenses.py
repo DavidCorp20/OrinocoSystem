@@ -24,13 +24,16 @@ async def list_expenses(user: dict = MANAGER):
 async def create_expense(data: ExpenseIn, user: dict = MANAGER):
     if data.category not in CATEGORIES:
         raise HTTPException(status_code=400, detail="Categoría inválida")
+    payment_method = data.payment_method.strip().lower()
     expense = {
         "id": new_id(),
         "business_id": user["business_id"],
         "category": data.category,
         "description": data.description.strip(),
         "amount": round(data.amount, 2),
+        "payment_method": payment_method,
         "date": data.date or now_iso()[:10],
+        "notes": data.notes,
         "user_email": user["email"],
         "created_at": now_iso(),
     }
@@ -55,8 +58,8 @@ async def export_expenses(from_date: Optional[str] = None, to_date: Optional[str
     if to_date:
         query.setdefault("created_at", {})["$lte"] = to_date + "T23:59:59"
     expenses = await db.expenses.find(query, {"_id": 0}).sort("created_at", -1).to_list(50000)
-    rows = [[e["created_at"][:10], e["category"], e["description"], e["amount"], e.get("user_email", "")] for e in expenses]
-    return _csv_response(rows, ["fecha", "categoria", "descripcion", "monto", "usuario"], "gastos")
+    rows = [[e["created_at"][:10], e["category"], e["description"], e["amount"], e.get("payment_method", ""), e.get("user_email", "")] for e in expenses]
+    return _csv_response(rows, ["fecha", "categoria", "descripcion", "monto", "metodo_pago", "usuario"], "gastos")
 
 
 @router.get("/finances/summary")
