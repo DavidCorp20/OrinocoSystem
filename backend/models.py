@@ -107,6 +107,11 @@ class PlatformPlanIn(BaseModel):
     monthly_price_usd: float = Field(gt=0)
     active: bool = True
     features: List[str] = []
+class PlatformSubscriptionIn(BaseModel):
+    plan_id: str
+    status: str = Field(default="activo", pattern="^(activo|pendiente|vencido|cancelado)$")
+    due_date: Optional[str] = None
+    monthly_price_usd: Optional[float] = Field(default=None, gt=0)
 class UserApprovalIn(BaseModel):
     approved: bool
 class AdminPasswordResetIn(BaseModel):
