@@ -20,12 +20,16 @@ def build_sales_features(sales: list[dict], days: int = 30) -> dict:
     daily = defaultdict(float)
     product_units = defaultdict(float)
     product_revenue = defaultdict(float)
+    valid_sales = 0
 
     for sale in sales:
         created = _parse_date(sale.get("created_at"))
         if created and created < cutoff:
             continue
-        day = created.date().isoformat() if created else "unknown"
+        if not created:
+            continue
+        valid_sales += 1
+        day = created.astimezone().date().isoformat()
         daily[day] += float(sale.get("total", 0) or 0)
         for item in sale.get("items", []):
             pid = item.get("product_id")
@@ -40,5 +44,6 @@ def build_sales_features(sales: list[dict], days: int = 30) -> dict:
         "product_units": dict(product_units),
         "product_revenue": dict(product_revenue),
         "days": days,
-        "sales_count": len(sales),
+        "sales_count": valid_sales,
+        "observed_days": len(daily),
     }
