@@ -21,9 +21,9 @@ from routes_reports_analysis import router as reports_router
 from routes_obligations import router as obligations_router
 from routes_recipes import router as recipes_router
 from seed import seed_all
-app=FastAPI(title="CuadrApp API");api_router=APIRouter(prefix="/api")
+app=FastAPI(title="CuadraApp API");api_router=APIRouter(prefix="/api")
 @api_router.get("/")
-async def root():return {"message":"CuadrApp API"}
+async def root():return {"message":"CuadraApp API"}
 @api_router.get("/healthz")
 async def healthz():
  await db.command("ping");return {"status":"ok"}
@@ -36,10 +36,10 @@ app.add_middleware(CORSMiddleware,allow_origins=frontend_origins,allow_credentia
 logging.basicConfig(level=logging.INFO,format="%(asctime)s - %(name)s - %(levelname)s - %(message)s");logger=logging.getLogger(__name__)
 @app.on_event("startup")
 async def startup():
- await db.users.create_index("email",unique=True);await db.login_attempts.create_index("identifier");await db.products.create_index([("business_id",1),("name",1)]);await db.sales.create_index([("business_id",1),("created_at",-1)]);await db.purchases.create_index([("business_id",1),("created_at",-1)]);await db.expenses.create_index([("business_id",1),("created_at",-1)]);await db.inventory_movements.create_index([("business_id",1),("created_at",-1)]);await db.assistant_messages.create_index([("business_id",1),("created_at",1)]);await db.obligations.create_index([("business_id",1),("status",1),("due_date",1)]);await db.platform_subscriptions.create_index([("business_id",1),("status",1)]);await db.platform_subscriptions.create_index([("status",1),("due_date",1)]);await db.recipes.create_index([("business_id",1),("name",1)])
+ await db.users.create_index("email",unique=True);await db.login_attempts.create_index("identifier");await db.products.create_index([("business_id",1),("name",1)]);await db.sales.create_index([("business_id",1),("created_at",-1)]);await db.purchases.create_index([("business_id",1),("created_at",-1)]);await db.expenses.create_index([("business_id",1),("created_at",-1)]);await db.inventory_movements.create_index([("business_id",1),("created_at",-1)]);await db.assistant_messages.create_index([("business_id",1),("created_at",1)]);await db.obligations.create_index([("business_id",1),("status",1),("due_date",1)]);await db.obligation_payments.create_index([("business_id",1),("obligation_id",1),("paid_at",-1)]);await db.platform_subscriptions.create_index([("business_id",1),("status",1)]);await db.platform_subscriptions.create_index([("status",1),("due_date",1)]);await db.platform_billing.create_index([("business_id",1),("paid_at",-1)]);await db.platform_billing.create_index([("subscription_id",1),("paid_at",-1)]);await db.platform_expenses.create_index([("date",1)])
  await db.users.update_many({"approved":{"$exists":False}},{"$set":{"approved":True}})
  defaults=[{"name":"Básico","description":"Para negocios que comienzan a digitalizar su operación.","monthly_price_usd":9.99,"active":True,"features":["Inventario","Ventas","Compras","Dashboard"]},{"name":"Premium","description":"Para negocios que necesitan análisis, equipo y asesoría inteligente.","monthly_price_usd":19.99,"active":True,"features":["Todo Básico","Finanzas","Reportes","Equipo","IA"]}]
  for p in defaults:await db.platform_plans.update_one({"name":p["name"]},{"$setOnInsert":{"id":str(uuid.uuid4()),**p,"created_at":datetime.now(timezone.utc).isoformat()}},upsert=True)
- await seed_all();logger.info("CuadrApp API lista")
+ await seed_all();logger.info("CuadraApp API lista")
 @app.on_event("shutdown")
 async def shutdown_db_client():client.close()
