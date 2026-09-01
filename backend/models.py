@@ -24,8 +24,10 @@ class RecipeIn(BaseModel): name: str = Field(min_length=2, max_length=120); outp
 class MovementIn(BaseModel): product_id: str; type: str; reason: str; quantity: float = Field(gt=0); notes: Optional[str] = None
 class SaleItemIn(BaseModel): product_id: str; quantity: float = Field(gt=0); unit: Optional[str] = None; unit_price: Optional[float] = Field(default=None, ge=0); discount: float = Field(default=0, ge=0)
 class PaymentPartIn(BaseModel): method: str = Field(min_length=2, max_length=30); amount: float = Field(gt=0)
+class SaleChargeIn(BaseModel): name: str = Field(min_length=1, max_length=80); amount: float = Field(gt=0)
 class SaleIn(BaseModel):
     items: List[SaleItemIn] = Field(min_length=1); payment_method: str = "efectivo"; payment_parts: List[PaymentPartIn] = []; customer_name: Optional[str] = None; customer_rif: Optional[str] = None
+    apply_iva: Optional[bool] = None; apply_igtf: Optional[bool] = None; apply_delivery: Optional[bool] = None; extra_charges: List[SaleChargeIn] = []
 class PurchaseItemIn(BaseModel): product_id: str; quantity: float = Field(gt=0); unit: Optional[str] = None; unit_cost: float = Field(ge=0)
 class PurchaseIn(BaseModel):
     items: List[PurchaseItemIn] = Field(min_length=1); payment_method: str = "pendiente"; payment_parts: List[PaymentPartIn] = []; supplier: Optional[str] = None; supplier_rif: Optional[str] = None; invoice_number: Optional[str] = None; notes: Optional[str] = None; status: str = "pagada"
