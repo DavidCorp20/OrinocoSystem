@@ -24,6 +24,7 @@ from routes_obligations import router as obligations_router
 from routes_recipes import router as recipes_router
 from routes_promotions import router as promotions_router
 from routes_cash_closure import router as cash_closure_router
+from routes_cubi import router as cubi_router
 from seed import seed_all
 
 app = FastAPI(title="CuadraApp API")
@@ -59,6 +60,7 @@ for r in (
     recipes_router,
     promotions_router,
     cash_closure_router,
+    cubi_router,
 ):
     api_router.include_router(r)
 app.include_router(api_router)
@@ -99,7 +101,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=frontend_origins,
     allow_credentials=True,
-    allow_methods=["*"] ,
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
@@ -112,19 +114,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
         if settings.APP_ENV == "production":
-            response.headers.setdefault(
-                "Strict-Transport-Security",
-                "max-age=31536000; includeSubDomains",
-            )
+            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         return response
 
 
 app.add_middleware(SecurityHeadersMiddleware)
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -151,37 +147,13 @@ async def startup():
     await db.cash_closures.create_index([("business_id", 1), ("date", -1), ("closed_at", -1)])
     await ensure_managed_accounts_approved()
     defaults = [
-        {
-            "name": "Básico",
-            "description": "Para negocios que comienzan a digitalizar su operación.",
-            "monthly_price_usd": 9.99,
-            "active": True,
-            "features": ["Inventario", "Ventas", "Compras", "Dashboard"],
-        },
-        {
-            "name": "Premium",
-            "description": "Para negocios que necesitan análisis, equipo y asesoría inteligente.",
-            "monthly_price_usd": 19.99,
-            "active": True,
-            "features": ["Todo Básico", "Finanzas", "Reportes", "Equipo", "IA"],
-        },
+        {"name": "Básico", "description": "Para negocios que comienzan a digitalizar su operación.", "monthly_price_usd": 9.99, "active": True, "features": ["Inventario", "Ventas", "Compras", "Dashboard"]},
+        {"name": "Premium", "description": "Para negocios que necesitan análisis, equipo y asesoría inteligente.", "monthly_price_usd": 19.99, "active": True, "features": ["Todo Básico", "Finanzas", "Reportes", "Equipo", "IA"]},
     ]
     for p in defaults:
-        await db.platform_plans.update_one(
-            {"name": p["name"]},
-            {
-                "$setOnInsert": {
-                    "id": str(uuid.uuid4()),
-                    **p,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                }
-            },
-            upsert=True,
-        )
-
+        await db.platform_plans.update_one({"name": p["name"]}, {"$setOnInsert": {"id": str(uuid.uuid4()), **p, "created_at": datetime.now(timezone.utc).isoformat()}}, upsert=True)
     if settings.APP_ENV != "production":
         await seed_all()
-
     logger.info("CuadraApp API lista")
 
 
