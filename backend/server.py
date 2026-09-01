@@ -19,6 +19,7 @@ from routes_rates import router as rates_router
 from routes_sales import router as sales_router
 from routes_reports_analysis import router as reports_router
 from routes_obligations import router as obligations_router
+from seed import seed_all
 app=FastAPI(title="CuadrApp API");api_router=APIRouter(prefix="/api")
 @api_router.get("/")
 async def root():return {"message":"CuadrApp API"}
@@ -34,7 +35,7 @@ app.add_middleware(CORSMiddleware,allow_origins=frontend_origins,allow_credentia
 logging.basicConfig(level=logging.INFO,format="%(asctime)s - %(name)s - %(levelname)s - %(message)s");logger=logging.getLogger(__name__)
 @app.on_event("startup")
 async def startup():
- await db.users.create_index("email",unique=True);await db.login_attempts.create_index("identifier");await db.products.create_index([("business_id",1),("name",1)]);await db.sales.create_index([("business_id",1),("created_at",-1)]);await db.purchases.create_index([("business_id",1),("created_at",-1)]);await db.expenses.create_index([("business_id",1),("created_at",-1)]);await db.inventory_movements.create_index([("business_id",1),("created_at",-1)]);await db.assistant_messages.create_index([("business_id",1),("created_at",1)]);await db.obligations.create_index([("business_id",1),("status",1),("due_date",1)])
+ await db.users.create_index("email",unique=True);await db.login_attempts.create_index("identifier");await db.products.create_index([("business_id",1),("name",1)]);await db.sales.create_index([("business_id",1),("created_at",-1)]);await db.purchases.create_index([("business_id",1),("created_at",-1)]);await db.expenses.create_index([("business_id",1),("created_at",-1)]);await db.inventory_movements.create_index([("business_id",1),("created_at",-1)]);await db.assistant_messages.create_index([("business_id",1),("created_at",1)]);await db.obligations.create_index([("business_id",1),("status",1),("due_date",1)]);await db.platform_subscriptions.create_index([("business_id",1),("status",1)]);await db.platform_subscriptions.create_index([("status",1),("due_date",1)])
  await db.users.update_many({"approved":{"$exists":False}},{"$set":{"approved":True}})
  defaults=[{"name":"Básico","description":"Para negocios que comienzan a digitalizar su operación.","monthly_price_usd":9.99,"active":True,"features":["Inventario","Ventas","Compras","Dashboard"]},{"name":"Premium","description":"Para negocios que necesitan análisis, equipo y asesoría inteligente.","monthly_price_usd":19.99,"active":True,"features":["Todo Básico","Finanzas","Reportes","Equipo","IA"]}]
  for p in defaults:await db.platform_plans.update_one({"name":p["name"]},{"$setOnInsert":{"id":str(uuid.uuid4()),**p,"created_at":datetime.now(timezone.utc).isoformat()}},upsert=True)
