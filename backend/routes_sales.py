@@ -31,7 +31,7 @@ async def create_sale(data: SaleIn, user: dict = Depends(require_business)):
     product_ids = [i.product_id for i in data.items]
     docs = await db.products.find({"id": {"$in": product_ids}, "business_id": bid}).to_list(1000)
     catalog = {p["id"]: p for p in docs}
-    items = []; total = cost_total = 0.0
+    items = []; subtotal = cost_total = 0.0
     for item in data.items:
         product = catalog.get(item.product_id)
         if not product: raise HTTPException(status_code=400, detail="Uno de los productos no existe en tu catálogo")
@@ -40,28 +40,25 @@ async def create_sale(data: SaleIn, user: dict = Depends(require_business)):
         discount = min(item.discount, price * item.quantity)
         line_total = round(price * item.quantity - discount, 2); cost = float(product.get("purchase_price", 0) or 0)
         items.append({"product_id": product["id"], "name": product["name"], "quantity": item.quantity, "unit_price": price, "discount": discount, "cost": cost, "line_total": line_total})
-        total += line_total; cost_total += cost * item.quantity
+        subtotal += line_total; cost_total += cost * item.quantity
     business = await db.businesses.find_one({"id": bid}, {"_id": 0}) or {}
-    iva_enabled = business.get("iva_enabled", True)
+    subtotal = round(subtotal, 2); cost_total = round(cost_total, 2)
+    iva_enabled = business.get("iva_enabled", False)
     iva_percent = float(business.get("iva_percent", 16) or 0) if iva_enabled else 0
+    # Los precios cargados por el comercio se consideran precios finales con IVA incluido.
+    iva_amount = round(subtotal - subtotal / (1 + iva_percent / 100), 2) if iva_enabled and iva_percent else 0
+    delivery_enabled = bool(business.get("delivery_enabled", False))
+    delivery_amount = round(float(business.get("delivery_amount", 0) or 0), 2) if delivery_enabled else 0
+    base_with_delivery = round(subtotal + delivery_amount, 2)
     igtf_enabled = bool(business.get("igtf_enabled", False))
     igtf_percent = float(business.get("igtf_percent", 3) or 0) if igtf_enabled else 0
-    delivery_enabled = bool(business.get("delivery_enabled", False))
-    delivery_amount = float(business.get("delivery_amount", 0) or 0) if delivery_enabled else 0
-    subtotal = round(total, 2)
-    iva_amount = round(subtotal * iva_percent / 100, 2)
-    total_before_igtf = round(subtotal + iva_amount + delivery_amount, 2)
-    payments = _validate_payments(total_before_igtf, data.payment_method, data.payment_parts)
-    foreign_amount = sum(p["amount"] for p in payments if p["method"] in {"usd", "divisas", "zelle", "tarjeta_divisa"})
-    igtf_amount = round(foreign_amount * igtf_percent / 100, 2) if igtf_enabled else 0
-    total_final = round(total_before_igtf + igtf_amount, 2)
-    if abs(total_final - total_before_igtf) > 0.01 and data.payment_parts:
-        payments = _validate_payments(total_final, data.payment_method, data.payment_parts)
-    elif abs(total_final - total_before_igtf) > 0.01:
-        payments = _validate_payments(total_final, data.payment_method, [])
-    cost_total = round(cost_total, 2)
+    foreign_methods = {"usd", "divisas", "zelle", "tarjeta_divisa"}
+    foreign_base = sum(p.amount for p in data.payment_parts if p.method.strip().lower() in foreign_methods) if data.payment_parts else (base_with_delivery if data.payment_method.strip().lower() in foreign_methods else 0)
+    igtf_amount = round(float(foreign_base) * igtf_percent / 100, 2) if igtf_enabled else 0
+    total = round(base_with_delivery + igtf_amount, 2)
+    payments = _validate_payments(total, data.payment_method, data.payment_parts)
     rate = (await get_effective_rate(business)).get("rate")
-    sale = {"id": new_id(), "business_id": bid, "items": items, "total": total_final, "cost_total": cost_total, "profit": round(subtotal-cost_total,2), "iva_enabled": iva_enabled, "iva_percent": iva_percent, "subtotal": subtotal, "iva_amount": iva_amount, "igtf_enabled": igtf_enabled, "igtf_percent": igtf_percent, "igtf_amount": igtf_amount, "delivery_enabled": delivery_enabled, "delivery_amount": delivery_amount, "exchange_rate":rate, "total_bs":round(total_final*rate,2) if rate else None, "payment_method": "combinado" if len(payments)>1 else payments[0]["method"], "payment_parts":payments, "customer_name":data.customer_name, "customer_rif":data.customer_rif, "user_email":user["email"], "created_at":now_iso()}
+    sale = {"id": new_id(), "business_id": bid, "items": items, "total": total, "cost_total": cost_total, "profit": round(subtotal-cost_total,2), "iva_enabled": iva_enabled, "iva_percent": iva_percent, "subtotal": subtotal, "iva_amount": iva_amount, "igtf_enabled": igtf_enabled, "igtf_percent": igtf_percent, "igtf_amount": igtf_amount, "delivery_enabled": delivery_enabled, "delivery_amount": delivery_amount, "exchange_rate":rate, "total_bs":round(total*rate,2) if rate else None, "payment_method": "combinado" if len(payments)>1 else payments[0]["method"], "payment_parts":payments, "customer_name":data.customer_name, "customer_rif":data.customer_rif, "user_email":user["email"], "created_at":now_iso()}
     low_stock=[]; applied=[]
     try:
         for item in items:
@@ -87,5 +84,5 @@ async def export_sales(from_date:Optional[str]=None,to_date:Optional[str]=None,u
     if from_date: query["created_at"]={"$gte":from_date}
     if to_date: query.setdefault("created_at",{})["$lte"]=to_date+"T23:59:59"
     sales=await db.sales.find(query,{"_id":0}).sort("created_at",-1).to_list(50000)
-    rows=[[s["created_at"][:10],s.get("invoice_number",""),"; ".join(f"{i['name']} x{i['quantity']:g}" for i in s["items"]),len(s["items"]),s.get("payment_method",""),s.get("customer_name") or "",s.get("customer_rif") or "",s["total"],s.get("subtotal",""),s.get("iva_amount",""),s.get("igtf_amount",""),s.get("delivery_amount",""),s.get("tasa_bcv") or s.get("exchange_rate") or "",s.get("total_bs") or "",s["cost_total"],s["profit"],s.get("user_email","")] for s in sales]
+    rows=[[s["created_at"][:10],s.get("invoice_number",""),"; ".join(f"{i['name']} x{i['quantity']:g}" for i in s["items"]),len(s["items"]),s.get("payment_method",""),s.get("customer_name") or "",s.get("customer_rif") or "",s["total"],s.get("subtotal",""),s.get("iva_amount",""),s.get("igtf_amount",""),s.get("delivery_amount",""),s.get("exchange_rate") or "",s.get("total_bs") or "",s["cost_total"],s["profit"],s.get("user_email","")] for s in sales]
     return _csv_response(rows,["fecha","factura","productos","num_items","metodo_pago","cliente","rif_cliente","total","base_imponible","iva","igtf","delivery","tasa_bcv","total_bs","costo","ganancia","usuario"],"ventas")
