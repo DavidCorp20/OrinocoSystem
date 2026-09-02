@@ -31,7 +31,7 @@ async def register(data: RegisterIn, response: Response):
 
 @router.post("/login")
 async def login(data: LoginIn, request: Request, response: Response):
-    email = data.email.lower()
+    email = data.email.strip().lower()
     attempts = await db.login_attempts.find_one({"identifier": email})
     if attempts and attempts.get("count", 0) >= MAX_ATTEMPTS:
         if attempts.get("locked_until", "") > now_iso():
@@ -44,7 +44,23 @@ async def login(data: LoginIn, request: Request, response: Response):
         locked_until = (now() + timedelta(minutes=LOCK_MINUTES)).isoformat() if count >= MAX_ATTEMPTS else ""
         await db.login_attempts.update_one({"identifier": email}, {"$set": {"identifier": email, "count": count, "locked_until": locked_until}}, upsert=True)
         raise HTTPException(status_code=401, detail="Correo o contraseña incorrectos")
+
     await db.login_attempts.delete_one({"identifier": email})
+
+    # The configured platform administrator is promoted at successful login as
+    # a self-healing safeguard. This removes the dependency on a prior startup
+    # migration/redeploy to establish the platform role.
+    configured_admin = (settings.ADMIN_EMAIL or "").strip().lower()
+    if configured_admin and email == configured_admin:
+        await db.users.update_one(
+            {"id": user["id"]},
+            {"$set": {"platform_role": "superadmin", "approved": True, "approved_at": now_iso(), "approved_by": "system_admin_login"}},
+        )
+        user["platform_role"] = "superadmin"
+        user["approved"] = True
+        user["approved_at"] = now_iso()
+        user["approved_by"] = "system_admin_login"
+
     if user.get("platform_role") != "superadmin" and user.get("approved") is not True:
         raise HTTPException(status_code=403, detail="Tu cuenta está pendiente de aprobación. Te avisaremos cuando puedas ingresar.")
     if user.get("business_id"):
