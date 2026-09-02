@@ -30,7 +30,7 @@ class SaleIn(BaseModel):
     apply_iva: Optional[bool] = None; apply_igtf: Optional[bool] = None; apply_delivery: Optional[bool] = None; extra_charges: List[SaleChargeIn] = []
 class PurchaseItemIn(BaseModel): product_id: str; quantity: float = Field(gt=0); unit: Optional[str] = None; unit_cost: float = Field(ge=0)
 class PurchaseIn(BaseModel):
-    items: List[PurchaseItemIn] = Field(min_length=1); payment_method: str = "pendiente"; payment_parts: List[PaymentPartIn] = []; supplier: Optional[str] = None; supplier_rif: Optional[str] = None; invoice_number: Optional[str] = None; notes: Optional[str] = None; status: str = "pagada"
+    items: List[PurchaseItemIn] = Field(min_length=1); payment_method: str = "pendiente"; payment_parts: List[PaymentPartIn] = []; supplier: Optional[str] = None; supplier_rif: Optional[str] = None; supplier_invoice_number: Optional[str] = Field(default=None, max_length=100); notes: Optional[str] = None; status: str = "pagada"
 class ExpenseIn(BaseModel): description: str = Field(min_length=1, max_length=200); amount: float = Field(gt=0); category: str = "otros"; payment_method: str = "efectivo"; date: Optional[str] = None; notes: Optional[str] = None
 class ObligationIn(BaseModel): kind: str = Field(pattern="^(por_cobrar|por_pagar)$"); contact: str = Field(min_length=1, max_length=120); description: str = Field(min_length=1, max_length=200); amount: float = Field(gt=0); due_date: str; notes: Optional[str] = Field(default=None, max_length=300)
 class ObligationPaymentIn(BaseModel): amount: float = Field(gt=0); payment_method: str = Field(default="efectivo", min_length=2, max_length=30); notes: Optional[str] = Field(default=None, max_length=300)
