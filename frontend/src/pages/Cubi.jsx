@@ -1,20 +1,16 @@
 import {useCallback,useEffect,useState} from "react";
-import {BrainCircuit,RefreshCw,TrendingUp,TrendingDown,Package,AlertTriangle,BarChart3,ShoppingCart} from "lucide-react";
-import {toast} from "sonner";
-import api,{apiError} from "../lib/api";
-import {fmtMoney,fmtNum} from "../lib/format";
-import {useAuth} from "../context/AuthContext";
+import {BrainCircuit,RefreshCw,TrendingUp,TrendingDown,Package,AlertTriangle,BarChart3,ShoppingCart,MessageCircle} from "lucide-react";
+import {toast} from "sonner";import api,{apiError} from "../lib/api";import {fmtMoney,fmtNum} from "../lib/format";import {useAuth} from "../context/AuthContext";
 
 export default function Cubi(){
- const{business}=useAuth();
- const[data,setData]=useState(null);const[loading,setLoading]=useState(true);
+ const{business,entitlements}=useAuth();const[data,setData]=useState(null);const[loading,setLoading]=useState(true);
  const load=useCallback(async()=>{setLoading(true);try{const r=await api.get("/cubi/insights");setData(r.data)}catch(e){toast.error(apiError(e,"No pudimos cargar la inteligencia de Cubi."))}finally{setLoading(false)}},[]);
  useEffect(()=>{load()},[load]);
- const currency=business?.currency||"USD";const forecast=data?.forecast||{};const inventory=data?.inventory_recommendations||[];const abc=data?.abc_analysis||[];const anomaly=data?.anomaly||{};
+ const currency=business?.currency||"USD";const forecast=data?.forecast||{};const inventory=data?.inventory_recommendations||[];const abc=data?.abc_analysis||[];const anomaly=data?.anomaly||{};const chatLimit=entitlements?.cubi_chat_limit||10;const cubiLevel=entitlements?.cubi||"basic";
  if(loading&&!data)return <div className="space-y-4"><div className="h-10 w-72 bg-secondary rounded-xl animate-pulse"/><div className="grid md:grid-cols-4 gap-4">{[1,2,3,4].map(x=><div key={x} className="h-28 bg-card border rounded-2xl animate-pulse"/>)}</div></div>;
  return <div className="space-y-5" data-testid="cubi-page">
   <div className="flex items-center justify-between gap-3 flex-wrap"><div><h1 className="font-heading text-3xl font-extrabold flex items-center gap-2"><BrainCircuit className="w-7 h-7 text-primary"/>Cubi Inteligencia</h1><p className="text-sm text-muted-foreground mt-1">Análisis automático de tu negocio basado en tus propias ventas, productos y stock.</p></div><button onClick={load} disabled={loading} className="h-10 px-4 rounded-xl border bg-card flex items-center gap-2 text-sm font-semibold"><RefreshCw className={`w-4 h-4 ${loading?"animate-spin":""}`}/>Actualizar</button></div>
-  <div className="rounded-2xl border bg-primary/5 p-5"><div className="flex items-center gap-3"><div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center"><BrainCircuit className="w-6 h-6 text-primary"/></div><div><p className="font-heading font-bold">Cubi está aprendiendo de tu operación</p><p className="text-sm text-muted-foreground">Motor nativo v1 · sin depender de IA generativa · {data?.history?.sales_count||0} ventas analizadas.</p></div></div></div>
+  <div className="rounded-2xl border bg-primary/5 p-5"><div className="flex items-center gap-3"><div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center"><BrainCircuit className="w-6 h-6 text-primary"/></div><div><p className="font-heading font-bold">Cubi está aprendiendo de tu operación</p><p className="text-sm text-muted-foreground">Motor nativo · nivel {cubiLevel} · {data?.history?.sales_count||0} ventas analizadas.</p></div></div><div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground"><MessageCircle className="w-4 h-4"/>Chat de Cubi: hasta {chatLimit} consultas diarias en tu plan.</div></div>
   <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
    <div className="bg-card border rounded-2xl p-4"><p className="text-xs text-muted-foreground">Pronóstico diario</p><p className="font-heading text-2xl font-extrabold mt-1">{forecast.available?fmtMoney(forecast.predicted_daily_revenue,currency):"—"}</p><p className="text-xs text-muted-foreground mt-1">Próximos {forecast.horizon_days||7} días</p></div>
    <div className="bg-card border rounded-2xl p-4"><p className="text-xs text-muted-foreground">Pronóstico del período</p><p className="font-heading text-2xl font-extrabold mt-1">{forecast.available?fmtMoney(forecast.predicted_period_revenue,currency):"—"}</p><p className="text-xs mt-1 flex items-center gap-1">{forecast.trend_percent>=0?<TrendingUp className="w-3.5 h-3.5 text-emerald-600"/>:<TrendingDown className="w-3.5 h-3.5 text-rose-600"/>}{forecast.available?`${forecast.trend_percent>=0?"+":""}${fmtNum(forecast.trend_percent)}% tendencia`:"Historial insuficiente"}</p></div>
