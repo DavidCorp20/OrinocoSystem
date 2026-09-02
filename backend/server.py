@@ -46,7 +46,7 @@ if settings.APP_ENV=="production":
     if not settings.FRONTEND_URL or settings.FRONTEND_URL.startswith("http://localhost"):raise RuntimeError("FRONTEND_URL debe apuntar al frontend real en production")
     if "*" in frontend_origins:raise RuntimeError("CORS no puede usar '*' en production")
 app.add_middleware(CORSMiddleware,allow_origins=frontend_origins,allow_credentials=True,allow_methods=["*"],allow_headers=["*"])
-PLAN_PATHS={"/finance":"finance","/finances":"finance","/finanzas":"finance","/obligations":"obligations","/reports":"reports_advanced","/projections":"projections","/projection":"projections","/promotions":"promotions","/recipes":"recipes","/cash-closure":"cash_closure","/cash-closures":"cash_closure"}
+PLAN_PATHS={"/finance":"finance","/finances":"finance","/finanzas":"finance","/obligations":"obligations","/reports":"reports_advanced","/projections":"projections","/projection":"projections","/promotions":"promotions","/recipes":"recipes","/cash-closure":"cash_closure","/cash-closures":"cash_closure","/exports":"exports","/templates":"exports"}
 class PlanAccessMiddleware(BaseHTTPMiddleware):
     async def dispatch(self,request:Request,call_next):
         if request.method=="OPTIONS":return await call_next(request)
