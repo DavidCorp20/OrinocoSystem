@@ -27,6 +27,7 @@ from routes_cash_closure import router as cash_closure_router
 from routes_cubi import router as cubi_router
 from seed import seed_all
 from demo_seed import seed_demo_account
+from demo_catalog_upgrade import upgrade_demo_catalog
 
 app = FastAPI(title="CuadraApp API")
 api_router = APIRouter(prefix="/api")
@@ -103,6 +104,7 @@ async def startup():
         await db.platform_plans.update_one({"name": p["name"]}, {"$setOnInsert": {"id": str(uuid.uuid4()), **p, "created_at": datetime.now(timezone.utc).isoformat()}}, upsert=True)
     if settings.APP_ENV != "production": await seed_all()
     await seed_demo_account()
+    await upgrade_demo_catalog()
     logger.info("CuadraApp API lista")
 
 @app.on_event("shutdown")
