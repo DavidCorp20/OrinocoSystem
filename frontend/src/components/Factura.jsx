@@ -13,7 +13,7 @@ function totals(doc) {
   return { total, subtotal, iva };
 }
 
-export function printFactura({ kind, doc, business }) {
+function printFactura({ kind, doc, business }) {
   const isVenta = kind === "venta";
   const { total, subtotal, iva } = totals(doc);
   const title = isVenta ? "FACTURA" : "COMPROBANTE DE COMPRA";
@@ -47,7 +47,7 @@ ${doc.exchange_rate ? `<tr><td>Tasa BCV del día</td><td class="r">${f2(doc.exch
 </table>
 <hr>
 <p class="c">¡Gracias por su ${isVenta ? "compra" : "atención"}!</p>
-<p class="c" style="color:#777;font-size:10px">Generado con ControlPyme</p>
+<p class="c" style="color:#777;font-size:10px">Generado con Platia</p>
 <script>window.onload=function(){window.print()}</script>
 </body></html>`;
   const w = window.open("", "_blank", "width=400,height=640");
@@ -55,6 +55,8 @@ ${doc.exchange_rate ? `<tr><td>Tasa BCV del día</td><td class="r">${f2(doc.exch
   w.document.write(html);
   w.document.close();
 }
+
+export { printFactura };
 
 export default function FacturaModal({ open, onClose, kind, doc, business }) {
   if (!doc) return null;
