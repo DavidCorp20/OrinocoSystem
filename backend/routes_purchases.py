@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from models import PurchaseIn
 from database import db
 from rates import get_effective_rate
-from routes_products import _csv_response
+from routes_products import _csv_response, _xlsx_response
 from security import new_id, now_iso, require_roles
 from pymongo import ReturnDocument
 
@@ -53,3 +53,13 @@ async def export_purchases(from_date:Optional[str]=None,to_date:Optional[str]=No
     if to_date: query.setdefault("created_at",{})["$lte"]=to_date+"T23:59:59"
     purchases=await db.purchases.find(query,{"_id":0}).sort("created_at",-1).to_list(50000); rows=[[p["created_at"][:10],p.get("invoice_number",""),p.get("supplier") or "",p.get("supplier_rif") or "", "; ".join(f"{i['name']} x{i['quantity']:g} {i.get('unit','unidad')}" for i in p["items"]),p.get("payment_method",""),p.get("status",""),p["total"],p.get("base",""),p.get("iva_amount",""),p.get("igtf_amount",""),p.get("delivery_amount",""),p.get("exchange_rate") or "",p.get("total_bs") or "",p.get("user_email","")] for p in purchases]
     return _csv_response(rows,["fecha","comprobante","proveedor","rif_proveedor","productos","metodo_pago","estado","total","base","iva","igtf","delivery","tasa_bcv","total_bs","usuario"],"compras")
+
+@router.get("/purchases/export/xlsx")
+async def export_purchases_xlsx(from_date:Optional[str]=None,to_date:Optional[str]=None,user:dict=MANAGER):
+    query={"business_id":user["business_id"]}
+    if from_date:query["created_at"]={"$gte":from_date}
+    if to_date:query.setdefault("created_at",{})["$lte"]=to_date+"T23:59:59"
+    purchases=await db.purchases.find(query,{"_id":0}).sort("created_at",-1).to_list(50000)
+    rows=[[p["created_at"][:10],p.get("invoice_number",""),p.get("supplier") or "",p.get("supplier_rif") or "","; ".join(f"{i['name']} x{i['quantity']:g} {i.get('unit','unidad')}" for i in p["items"]),p.get("payment_method",""),p.get("status",""),p.get("total",0),p.get("base",0),p.get("iva_amount",0),p.get("igtf_amount",0),p.get("delivery_amount",0),p.get("exchange_rate") or "",p.get("total_bs") or "",p.get("user_email","")] for p in purchases]
+    headers=["Fecha","Comprobante","Proveedor","RIF proveedor","Productos","Método de pago","Estado","Total","Base","IVA","IGTF","Delivery","Tasa","Total Bs","Usuario"]
+    return _xlsx_response(rows,headers,"compras")
