@@ -25,6 +25,7 @@ from routes_recipes import router as recipes_router
 from routes_promotions import router as promotions_router
 from routes_cash_closure import router as cash_closure_router
 from routes_cubi import router as cubi_router
+from routes_import_export import router as import_export_router
 from seed import seed_all
 from demo_seed import seed_demo_account
 from demo_catalog_upgrade import upgrade_demo_catalog
@@ -35,7 +36,7 @@ app=FastAPI(title="CuadraApp API");api_router=APIRouter(prefix="/api")
 async def root():return {"message":"CuadraApp API"}
 @api_router.get("/healthz")
 async def healthz():await db.command("ping");return {"status":"ok"}
-for r in (auth_router,business_router,products_router,inventory_router,sales_router,purchases_router,expenses_router,dashboard_router,assistant_router,ai_router,rates_router,platform_router,subscription_router,reports_router,obligations_router,recipes_router,promotions_router,cash_closure_router,cubi_router):api_router.include_router(r)
+for r in (auth_router,business_router,products_router,inventory_router,sales_router,purchases_router,expenses_router,dashboard_router,assistant_router,ai_router,rates_router,platform_router,subscription_router,reports_router,obligations_router,recipes_router,promotions_router,cash_closure_router,cubi_router,import_export_router):api_router.include_router(r)
 app.include_router(api_router)
 def normalize_origin(v:str)->str:return v.strip().rstrip("/")
 env_origins=[normalize_origin(o) for o in (settings.CORS_ORIGINS.split(",") if settings.CORS_ORIGINS else []) if o.strip()];frontend_origins={normalize_origin(settings.FRONTEND_URL) if settings.FRONTEND_URL else "","https://cuadrapp.up.railway.app","http://localhost:3000","http://127.0.0.1:3000","http://localhost:3001","http://127.0.0.1:3001",*env_origins};frontend_origins=list(dict.fromkeys(o for o in frontend_origins if o))
