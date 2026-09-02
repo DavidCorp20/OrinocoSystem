@@ -24,10 +24,16 @@ export function NoAccess() {
 }
 
 export default function Protected({ children, requireBusiness = true }) {
-  const { status, business } = useAuth();
+  const { status, business, isSuper } = useAuth();
   const loc = useLocation();
+
   if (status === "loading") return <LoadingScreen />;
   if (status === "guest") return <Navigate to="/auth" replace state={{ from: loc.pathname }} />;
+
+  // A platform superadmin is not a tenant and therefore does not need a business.
+  // Never send the platform administrator through tenant onboarding/dashboard guards.
+  if (isSuper) return <>{children}</>;
+
   if (requireBusiness && !business) return <Navigate to="/onboarding" replace />;
   if (!requireBusiness && business) return <Navigate to="/dashboard" replace />;
 
