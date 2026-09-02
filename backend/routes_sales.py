@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from models import SaleIn
 from database import db
 from rates import get_effective_rate
-from routes_products import _csv_response
+from routes_products import _csv_response, _xlsx_response
 from security import new_id, now_iso, require_business, require_roles
 from pymongo import ReturnDocument
 
@@ -55,3 +55,12 @@ async def export_sales(from_date:Optional[str]=None,to_date:Optional[str]=None,u
     if to_date:query.setdefault("created_at",{})["$lte"]=to_date+"T23:59:59"
     sales=await db.sales.find(query,{"_id":0}).sort("created_at",-1).to_list(50000);rows=[[s["created_at"][:10],s.get("invoice_number",""),"; ".join(f"{i['name']} x{i['quantity']:g} {i.get('unit','unidad')}" for i in s["items"]),len(s["items"]),s.get("payment_method",""),s.get("customer_name") or "",s.get("customer_rif") or "",s["total"],s.get("subtotal",""),s.get("iva_amount",""),s.get("igtf_amount",""),s.get("delivery_amount",""),s.get("extra_charges_total",0),s.get("exchange_rate") or "",s.get("total_bs") or "",s["cost_total"],s["profit"],s.get("user_email","")] for s in sales]
     return _csv_response(rows,["fecha","factura","productos","num_items","metodo_pago","cliente","rif_cliente","total","base_imponible","iva","igtf","delivery","extras","tasa_bcv","total_bs","costo","ganancia","usuario"],"ventas")
+@router.get("/sales/export/xlsx")
+async def export_sales_xlsx(from_date:Optional[str]=None,to_date:Optional[str]=None,user:dict=Depends(require_roles("propietario","administrador"))):
+    query={"business_id":user["business_id"]}
+    if from_date:query["created_at"]={"$gte":from_date}
+    if to_date:query.setdefault("created_at",{})["$lte"]=to_date+"T23:59:59"
+    sales=await db.sales.find(query,{"_id":0}).sort("created_at",-1).to_list(50000)
+    rows=[[s["created_at"][:10],s.get("invoice_number",""),"; ".join(f"{i['name']} x{i['quantity']:g} {i.get('unit','unidad')}" for i in s["items"]),len(s["items"]),s.get("payment_method",""),s.get("customer_name") or "",s.get("customer_rif") or "",s["total"],s.get("subtotal",0),s.get("iva_amount",0),s.get("igtf_amount",0),s.get("delivery_amount",0),s.get("extra_charges_total",0),s.get("exchange_rate") or "",s.get("total_bs") or "",s.get("cost_total",0),s.get("profit",0),s.get("user_email","")] for s in sales]
+    headers=["Fecha","Factura","Productos","N° items","Método de pago","Cliente","RIF cliente","Total","Subtotal","IVA","IGTF","Delivery","Extras","Tasa","Total Bs","Costo","Ganancia","Usuario"]
+    return _xlsx_response(rows,headers,"ventas")
