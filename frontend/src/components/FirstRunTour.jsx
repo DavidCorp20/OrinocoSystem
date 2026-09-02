@@ -3,13 +3,13 @@ import { ArrowRight, X, BarChart3, ShoppingCart, Package, FileText, Settings, Bo
 
 const STEPS = [
   ["Dashboard", "Aquí entiendes la salud del negocio: ventas, margen, ganancia, tendencia, stock y recomendaciones. Los indicadores tienen un icono i para ver qué significan, su fórmula y un ejemplo."],
-  ["Punto de venta", "Registra una venta, elige cómo te pagaron y CuadraApp actualiza la información del negocio. Las ventas en efectivo también alimentan el cierre de caja.", ShoppingCart],
+  ["Punto de venta", "Registra una venta, elige cómo te pagaron y Platia actualiza la información del negocio. Las ventas en efectivo también alimentan el cierre de caja.", ShoppingCart],
   ["Productos e inventario", "Productos guarda precios y costos. Inventario muestra existencias y movimientos. El stock bajo y los productos por agotarse aparecen como alertas para ayudarte a decidir cuándo reponer.", Package],
   ["Ventas, compras y gastos", "Estas operaciones construyen la información financiera del negocio. Registrar correctamente costos, compras y gastos es clave para que los indicadores sean útiles.", BarChart3],
   ["Reportes y cierre de caja", "Los reportes convierten tus movimientos en información para decidir. El cierre de caja compara cuánto efectivo debería haber contra cuánto efectivo contaste y deja trazabilidad.", Wallet],
   ["Configuración", "Aquí defines las preferencias del negocio, moneda y referencia de comparación USD/EUR. Las tasas automáticas se muestran para ayudarte a interpretar valores en bolívares.", Settings],
   ["Cubi", "Cubi puede analizar los datos reales del negocio y ayudarte a entender qué está pasando y qué acción conviene tomar. No reemplaza tu decisión: te ayuda a tomarla con datos.", Bot],
-  ["Ahora sí: empieza", "No necesitas memorizar todo. Usa el icono i cuando tengas una duda. En los indicadores verás qué mide, cómo se calcula y un ejemplo sencillo. CuadraApp debe ayudarte a entender el negocio, no solo a mostrar números.", FileText],
+  ["Ahora sí: empieza", "No necesitas memorizar todo. Usa el icono i cuando tengas una duda. En los indicadores verás qué mide, cómo se calcula y un ejemplo sencillo. Platia debe ayudarte a entender el negocio, no solo a mostrar números.", FileText],
 ];
 
 let claimedInThisSession = false;
