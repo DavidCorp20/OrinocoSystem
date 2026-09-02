@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from database import db
 from models import BusinessIn, SettingsIn, TeamUserIn
 from security import get_current_user, hash_password, new_id, now_iso, public_user, require_roles
+from plan_access import require_user_capacity
 
 router = APIRouter(tags=["business"])
 BUSINESS_FIELDS = {"_id": 0}
@@ -54,6 +55,7 @@ async def list_team(user: dict = Depends(require_roles("propietario"))):
 @router.post("/team")
 async def add_team_member(data: TeamUserIn,user:dict=Depends(require_roles("propietario"))):
     if data.role not in ("administrador","vendedor"): raise HTTPException(400,"Rol inválido: usa administrador o vendedor")
+    await require_user_capacity(user["business_id"])
     email=data.email.lower()
     if await db.users.find_one({"email":email}): raise HTTPException(400,"Ya existe una cuenta con este correo")
     member={"id":new_id(),"email":email,"name":data.name.strip(),"password_hash":hash_password(data.password),"role":data.role,"platform_role":None,"business_id":user["business_id"],"created_at":now_iso()};await db.users.insert_one(member);return {"member":public_user(member)}
