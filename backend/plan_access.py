@@ -14,7 +14,10 @@ async def get_plan_for_business(business_id: str):
     if not sub or sub.get("status")!="activo": return sub,DEFAULT_ENTITLEMENTS["Básico"]
     plan=await db.platform_plans.find_one({"id":sub.get("plan_id")},{"_id":0})
     if not plan:return sub,DEFAULT_ENTITLEMENTS["Básico"]
-    return sub,plan.get("entitlements") or DEFAULT_ENTITLEMENTS.get(plan.get("name"),DEFAULT_ENTITLEMENTS["Básico"])
+    name=plan.get("name","Básico"); defaults=DEFAULT_ENTITLEMENTS.get(name,DEFAULT_ENTITLEMENTS["Básico"]); stored=plan.get("entitlements") or {}
+    ent={**defaults,**stored}
+    if "cubi_chat_limit" not in stored: ent["cubi_chat_limit"]=defaults.get("cubi_chat_limit",10)
+    return sub,ent
 
 async def get_entitlements(business_id:str): return (await get_plan_for_business(business_id))[1]
 
@@ -29,11 +32,9 @@ async def require_user_capacity(business_id:str):
     return ent
 
 async def require_cubi_chat(business_id:str):
-    ent=await get_entitlements(business_id)
-    limit=int(ent.get("cubi_chat_limit",10))
+    ent=await get_entitlements(business_id); limit=int(ent.get("cubi_chat_limit",10))
     if limit <= 0: raise HTTPException(402,"El chat de Cubi no está incluido en tu plan.")
     start=datetime.now(timezone.utc).replace(hour=0,minute=0,second=0,microsecond=0).isoformat()
     used=await db.assistant_messages.count_documents({"business_id":business_id,"role":"user","created_at":{"$gte":start}})
-    if used>=limit:
-        raise HTTPException(429,f"Alcanzaste el límite diario de Cubi ({limit} consultas). Puedes continuar mañana o actualizar a Pro para disponer de un límite mayor.")
+    if used>=limit: raise HTTPException(429,f"Alcanzaste el límite diario de Cubi ({limit} consultas). Puedes continuar mañana o actualizar a Pro para disponer de un límite mayor.")
     return {"limit":limit,"used":used}
