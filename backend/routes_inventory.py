@@ -36,13 +36,17 @@ async def create_movement(data: MovementIn, user: dict = Depends(require_busines
     await db.inventory_movements.insert_one(movement); movement.pop("_id", None); return {"movement": movement, "stock": new_stock}
 
 @router.get("/movements/export/csv")
-async def export_movements(user: dict = Depends(require_roles("propietario", "administrador"))):
-    movements = await db.inventory_movements.find({"business_id": user["business_id"]}, {"_id": 0}).sort("created_at", -1).to_list(20000)
+async def export_movements(type: Optional[str] = None, user: dict = Depends(require_roles("propietario", "administrador"))):
+    query = {"business_id": user["business_id"]}
+    if type in ("entrada", "salida"): query["type"] = type
+    movements = await db.inventory_movements.find(query, {"_id": 0}).sort("created_at", -1).to_list(20000)
     rows = [[m["created_at"][:10], m["product_name"], m["type"], m["reason"], m["quantity"], m.get("stock_after", ""), m.get("user_email", ""), m.get("notes") or ""] for m in movements]
     return _csv_response(rows, ["fecha", "producto", "tipo", "motivo", "cantidad", "stock_resultante", "usuario", "notas"], "movimientos")
 
 @router.get("/movements/export/xlsx")
-async def export_movements_xlsx(user: dict = Depends(require_roles("propietario", "administrador"))):
-    movements = await db.inventory_movements.find({"business_id": user["business_id"]}, {"_id": 0}).sort("created_at", -1).to_list(20000)
+async def export_movements_xlsx(type: Optional[str] = None, user: dict = Depends(require_roles("propietario", "administrador"))):
+    query = {"business_id": user["business_id"]}
+    if type in ("entrada", "salida"): query["type"] = type
+    movements = await db.inventory_movements.find(query, {"_id": 0}).sort("created_at", -1).to_list(20000)
     rows = [[m["created_at"][:10], m["product_name"], m["type"], m["reason"], m["quantity"], m.get("stock_after", ""), m.get("user_email", ""), m.get("notes") or ""] for m in movements]
     return _xlsx_response(rows, ["Fecha", "Producto", "Tipo", "Motivo", "Cantidad", "Stock resultante", "Usuario", "Notas"], "movimientos")
