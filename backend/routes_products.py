@@ -112,3 +112,49 @@ async def import_products(file:UploadFile=File(...),user:dict=MANAGER):
         await db.products.insert_one(product)
         if product["stock"]>0:await db.inventory_movements.insert_one({"id":new_id(),"business_id":bid,"product_id":product["id"],"product_name":product["name"],"type":"entrada","reason":"carga_inicial","quantity":product["stock"],"stock_after":product["stock"],"user_email":user["email"],"notes":"Importado desde CSV","created_at":now_iso()})
     return {"created":created}
+
+@router.post("/products/import/xlsx")
+async def import_products_xlsx(file:UploadFile=File(...),user:dict=MANAGER):
+    if not (file.filename or "").lower().endswith((".xlsx",".xlsm")):
+        raise HTTPException(400,"El archivo debe ser Excel (.xlsx o .xlsm)")
+    try:
+        from openpyxl import load_workbook
+        raw=await file.read();wb=load_workbook(io.BytesIO(raw),read_only=True,data_only=True)
+        ws=wb["Productos"] if "Productos" in wb.sheetnames else wb.active
+        rows=list(ws.iter_rows(values_only=True))
+    except Exception as exc:
+        raise HTTPException(400,f"No se pudo leer el Excel: {exc}")
+    if not rows: raise HTTPException(400,"El Excel está vacío")
+    headers=[str(x).strip().lower() if x is not None else "" for x in rows[0]]
+    required="nombre"
+    if required not in headers: raise HTTPException(400,"Falta la columna obligatoria 'nombre'")
+    idx={h:i for i,h in enumerate(headers) if h}
+    bid=user["business_id"]
+    existing=await db.products.find({"business_id":bid}, {"_id":0,"sku":1,"barcode":1}).to_list(10000)
+    existing_skus={str(x.get("sku")).strip().lower() for x in existing if x.get("sku")}
+    existing_barcodes={str(x.get("barcode")).strip() for x in existing if x.get("barcode")}
+    created=0;issues=[];seen_skus=set();seen_barcodes=set();count=await db.products.count_documents({"business_id":bid})
+    def val(row,key,default=""):
+        i=idx.get(key);return row[i] if i is not None and i<len(row) else default
+    def text(row,key):
+        v=val(row,key,"");return "" if v is None else str(v).strip()
+    def num(row,key,default=0.0):
+        v=val(row,key,default)
+        try:return float(str(v).replace(",",".").strip())
+        except (TypeError,ValueError):raise ValueError(f"{key} debe ser numérico")
+    for line,row in enumerate(rows[1:],2):
+        if not any(x not in (None,"") for x in row): continue
+        name=text(row,"nombre")
+        if not name: issues.append({"fila":line,"error":"Falta nombre"});continue
+        sku=text(row,"sku").lower() or f"p-{count+created+1:04d}"
+        barcode=text(row,"codigo_barras")
+        if sku in existing_skus or sku in seen_skus: issues.append({"fila":line,"error":f"SKU duplicado: {sku}"});continue
+        if barcode and (barcode in existing_barcodes or barcode in seen_barcodes): issues.append({"fila":line,"error":f"Código de barras duplicado: {barcode}"});continue
+        try:
+            purchase=num(row,"precio_compra");sale=num(row,"precio_venta");stock=num(row,"stock");minimum=num(row,"stock_minimo",5);maximum=num(row,"stock_maximo",0)
+        except ValueError as exc: issues.append({"fila":line,"error":str(exc)});continue
+        product={"id":new_id(),"business_id":bid,"name":name,"sku":sku,"barcode":barcode or None,"category":text(row,"categoria") or "General","brand":text(row,"marca") or None,"supplier":text(row,"proveedor") or None,"purchase_price":purchase,"sale_price":sale,"stock":stock,"min_stock":minimum,"max_stock":maximum or None,"unit":text(row,"unidad") or "unidad","image_url":text(row,"imagen_url") or None,"status":"activo","created_at":now_iso(),"updated_at":now_iso()}
+        await db.products.insert_one(product);created+=1;seen_skus.add(sku);existing_skus.add(sku)
+        if barcode: seen_barcodes.add(barcode);existing_barcodes.add(barcode)
+        if stock>0: await db.inventory_movements.insert_one({"id":new_id(),"business_id":bid,"product_id":product["id"],"product_name":name,"type":"entrada","reason":"carga_inicial","quantity":stock,"stock_after":stock,"user_email":user["email"],"notes":"Importado desde Excel","created_at":now_iso()})
+    return {"created":created,"issues":issues,"errors":len(issues)}
