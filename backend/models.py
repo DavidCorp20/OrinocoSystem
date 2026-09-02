@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, EmailStr, Field
 
 class RegisterIn(BaseModel):
@@ -37,7 +37,8 @@ class ObligationPaymentIn(BaseModel): amount: float = Field(gt=0); payment_metho
 class ChatIn(BaseModel): message: str = Field(min_length=1, max_length=2000)
 class BusinessStatusIn(BaseModel): active: bool
 class PlatformExpenseIn(BaseModel): category: str; description: str = Field(min_length=1, max_length=200); amount: float = Field(gt=0); date: Optional[str] = None
-class PlatformPlanIn(BaseModel): name: str = Field(min_length=2, max_length=60); description: Optional[str] = Field(default=None, max_length=300); monthly_price_usd: float = Field(gt=0); active: bool = True; features: List[str] = []
+class PlatformPlanIn(BaseModel):
+    name: str = Field(min_length=2, max_length=60); description: Optional[str] = Field(default=None, max_length=300); monthly_price_usd: float = Field(gt=0); active: bool = True; features: List[str] = []; entitlements: Dict[str, Any] = {}
 class PlatformSubscriptionIn(BaseModel): plan_id: str; status: str = Field(default="activo", pattern="^(activo|pendiente|vencido|cancelado)$"); due_date: Optional[str] = None; monthly_price_usd: Optional[float] = Field(default=None, gt=0)
 class PlatformBillingIn(BaseModel): subscription_id: str; amount: float = Field(gt=0); payment_method: str = Field(default="transferencia", min_length=2, max_length=40); paid_at: Optional[str] = None; notes: Optional[str] = Field(default=None, max_length=300)
 class MerchantPaymentIn(BaseModel):
