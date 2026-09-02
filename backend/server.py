@@ -46,11 +46,24 @@ if settings.APP_ENV=="production":
     if not settings.FRONTEND_URL or settings.FRONTEND_URL.startswith("http://localhost"):raise RuntimeError("FRONTEND_URL debe apuntar al frontend real en production")
     if "*" in frontend_origins:raise RuntimeError("CORS no puede usar '*' en production")
 app.add_middleware(CORSMiddleware,allow_origins=frontend_origins,allow_credentials=True,allow_methods=["*"],allow_headers=["*"])
-PLAN_PATHS={"/finance":"finance","/finances":"finance","/finanzas":"finance","/obligations":"obligations","/reports":"reports_advanced","/projections":"projections","/projection":"projections","/promotions":"promotions","/recipes":"recipes","/cash-closure":"cash_closure","/cash-closures":"cash_closure","/exports":"exports","/templates":"exports"}
+PLAN_PATHS={"/finance":"finance","/finances":"finance","/finanzas":"finance","/obligations":"obligations","/reports":"reports_advanced","/projections":"projections","/projection":"projections","/promotions":"promotions","/recipes":"recipes","/cash-closure":"cash_closure","/cash-closures":"cash_closure","/exports":"exports","/templates":"exports","/ai/margin-analysis":"advanced_analytics"}
 class PlanAccessMiddleware(BaseHTTPMiddleware):
     async def dispatch(self,request:Request,call_next):
         if request.method=="OPTIONS":return await call_next(request)
-        path=request.url.path;feature=next((f for suffix,f in PLAN_PATHS.items() if path.startswith("/api"+suffix)),None)
+        path=request.url.path
+        if path.startswith("/api/assistant/chat"):
+            from security import get_current_user
+            from plan_access import require_cubi_chat
+            try:
+                user=await get_current_user(request)
+                if user.get("platform_role")!="superadmin" and user.get("business_id"): await require_cubi_chat(user["business_id"])
+            except Exception as exc:
+                from fastapi import HTTPException
+                if isinstance(exc,HTTPException):
+                    from fastapi.responses import JSONResponse
+                    return JSONResponse(status_code=exc.status_code,content={"detail":exc.detail})
+                raise
+        feature=next((f for suffix,f in PLAN_PATHS.items() if path.startswith("/api"+suffix)),None)
         if feature:
             from security import get_current_user
             from plan_access import require_feature
