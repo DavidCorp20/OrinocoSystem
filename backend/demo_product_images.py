@@ -6,8 +6,6 @@ from database import db
 
 DEMO_EMAIL = os.getenv("DEMO_EMAIL", "demo@cuadrapp.com").strip().lower()
 
-# Wikimedia Commons files are used because they are stable public image URLs and
-# each source page documents its applicable reuse license.
 IMAGE_FILES = {
     "Aceite 20W-50 (galón)": "Motor oil.JPG",
     "Bujía NGK": "Sparkplug.jpg",
@@ -28,13 +26,12 @@ IMAGE_FILES = {
     "Sensor de oxígeno": "Oxygen sensor IMG 0488.JPG",
     "Relé automotriz 12V": "AutomotiveRelay.jpg",
     "Terminal de batería": "A battery terminal.jpg",
-    # A clean automotive product photo is preferable to a generic placeholder.
     "Silicón para juntas": "Motor oil bottles variousbrands.jpg",
 }
 
 
 def commons_url(filename: str) -> str:
-    return "https://commons.wikimedia.org/wiki/Special:FilePath/" + quote(filename, safe="")
+    return "https://commons.wikimedia.org/wiki/Special:Redirect/file/" + quote(filename, safe="")
 
 
 async def seed_demo_product_images():
