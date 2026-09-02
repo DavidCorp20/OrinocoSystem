@@ -7,13 +7,41 @@ from fastapi.responses import StreamingResponse
 from database import db
 from models import ProductIn
 from security import new_id, now_iso, require_business, require_roles
+
 router = APIRouter(tags=["products"])
 PRODUCT_FIELDS = {"_id": 0}
 MANAGER = Depends(require_roles("propietario", "administrador"))
 
 def _csv_response(rows, headers, filename):
-    buf=io.StringIO();buf.write("﻿");writer=csv.writer(buf);writer.writerow(headers);writer.writerows(rows);buf.seek(0)
+    buf=io.StringIO();buf.write("\ufeff");writer=csv.writer(buf);writer.writerow(headers);writer.writerows(rows);buf.seek(0)
     return StreamingResponse(iter([buf.getvalue()]),media_type="text/csv",headers={"Content-Disposition":f"attachment; filename={filename}.csv"})
+
+def _xlsx_response(rows, headers, filename, instructions=False):
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
+    from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.table import Table, TableStyleInfo
+    wb=Workbook();ws=wb.active;ws.title="Productos"
+    ws.append(headers)
+    for row in rows: ws.append(row)
+    thin=Side(style="thin",color="D9DEE7")
+    for c in ws[1]:
+        c.fill=PatternFill("solid",fgColor="1F2937");c.font=Font(color="FFFFFF",bold=True);c.alignment=Alignment(horizontal="center",vertical="center");c.border=Border(bottom=thin)
+    for row in ws.iter_rows(min_row=2):
+        for c in row: c.border=Border(left=thin,right=thin,top=thin,bottom=thin);c.alignment=Alignment(vertical="top",wrap_text=True)
+    ws.freeze_panes="A2";ws.auto_filter.ref=f"A1:{get_column_letter(len(headers))}{max(1,len(rows)+1)}"
+    if rows:
+        table=Table(displayName="ProductosReporte",ref=f"A1:{get_column_letter(len(headers))}{len(rows)+1}");table.tableStyleInfo=TableStyleInfo(name="TableStyleMedium2",showRowStripes=True);ws.add_table(table)
+    for i,h in enumerate(headers,1): ws.column_dimensions[get_column_letter(i)].width=max(12,min(34,max([len(str(h))]+[len(str(r[i-1])) for r in rows[:100]])+3))
+    ws.row_dimensions[1].height=28
+    if instructions:
+        ins=wb.create_sheet("Instrucciones");ins.column_dimensions["A"].width=28;ins.column_dimensions["B"].width=72
+        ins.append(["PLANTILLA CUADRAAPP","Carga de productos"]);ins.append(["Importación","Completa la hoja Productos y conserva los encabezados."]);ins.append(["Obligatorio","Nombre del producto."]);ins.append(["Números","Usa números sin símbolos de moneda."]);ins.append(["Códigos","SKU y código de barras se manejan como texto."]);ins["A1"].font=Font(bold=True,size=14);ins["B1"].font=Font(bold=True,size=14)
+    buf=io.BytesIO();wb.save(buf);buf.seek(0)
+    return StreamingResponse(iter([buf.getvalue()]),media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",headers={"Content-Disposition":f'attachment; filename="{filename}.xlsx"'})
+
+def _product_rows(products):
+    return [[p.get("name",""),p.get("sku",""),p.get("barcode") or "",p.get("category",""),p.get("brand") or "",p.get("supplier") or "",p.get("purchase_price",0),p.get("sale_price",0),p.get("stock",0),p.get("min_stock",0),p.get("max_stock") if p.get("max_stock") is not None else "",p.get("unit","unidad"),p.get("image_url") or ""] for p in products]
 
 @router.get("/products")
 async def list_products(search:Optional[str]=None,category:Optional[str]=None,user:dict=Depends(require_business)):
@@ -56,8 +84,20 @@ async def delete_product(product_id:str,user:dict=MANAGER):
 
 @router.get("/products/export/csv")
 async def export_products(user:dict=MANAGER):
-    products=await db.products.find({"business_id":user["business_id"]},PRODUCT_FIELDS).sort("name",1).to_list(10000);rows=[[p["name"],p.get("sku",""),p.get("category",""),p.get("brand") or "",p.get("supplier") or "",p.get("purchase_price",0),p.get("sale_price",0),p.get("stock",0),p.get("min_stock",0),p.get("max_stock") or "",p.get("unit","unidad"),p.get("image_url") or ""] for p in products]
-    return _csv_response(rows,["nombre","sku","categoria","marca","proveedor","precio_compra","precio_venta","stock","stock_minimo","stock_maximo","unidad","imagen_url"],"productos")
+    products=await db.products.find({"business_id":user["business_id"]},PRODUCT_FIELDS).sort("name",1).to_list(10000)
+    return _csv_response(_product_rows(products),["nombre","sku","codigo_barras","categoria","marca","proveedor","precio_compra","precio_venta","stock","stock_minimo","stock_maximo","unidad","imagen_url"],"productos")
+
+@router.get("/products/export/xlsx")
+async def export_products_xlsx(user:dict=MANAGER):
+    products=await db.products.find({"business_id":user["business_id"]},PRODUCT_FIELDS).sort("name",1).to_list(10000)
+    headers=["Producto","SKU","Código de barras","Categoría","Marca","Proveedor","Costo","Precio","Stock","Stock mínimo","Stock máximo","Unidad","Imagen"]
+    return _xlsx_response(_product_rows(products),headers,"productos")
+
+@router.get("/products/template/xlsx")
+async def product_template_xlsx(user:dict=MANAGER):
+    headers=["nombre","sku","codigo_barras","categoria","marca","proveedor","precio_compra","precio_venta","stock","stock_minimo","stock_maximo","unidad","imagen_url"]
+    example=[["Harina P.A.N. blanca 1kg","P-0001","7591234567890","Alimentos","P.A.N.","Proveedor Demo",1.25,1.80,20,5,50,"unidad",""]]
+    return _xlsx_response(example,headers,"plantilla_productos",True)
 
 @router.post("/products/import")
 async def import_products(file:UploadFile=File(...),user:dict=MANAGER):
