@@ -28,6 +28,7 @@ from routes_cubi import router as cubi_router
 from seed import seed_all
 from demo_seed import seed_demo_account
 from demo_catalog_upgrade import upgrade_demo_catalog
+from demo_product_images import seed_demo_product_images
 
 app = FastAPI(title="CuadraApp API")
 api_router = APIRouter(prefix="/api")
@@ -105,6 +106,7 @@ async def startup():
     if settings.APP_ENV != "production": await seed_all()
     await seed_demo_account()
     await upgrade_demo_catalog()
+    await seed_demo_product_images()
     logger.info("CuadraApp API lista")
 
 @app.on_event("shutdown")
