@@ -32,9 +32,9 @@ from demo_seed import seed_demo_account
 from demo_catalog_upgrade import upgrade_demo_catalog
 from demo_product_images import seed_demo_product_images
 from plan_access import DEFAULT_ENTITLEMENTS
-app=FastAPI(title="CuadraApp API");api_router=APIRouter(prefix="/api")
+app=FastAPI(title="PLATIA API");api_router=APIRouter(prefix="/api")
 @api_router.get("/")
-async def root():return {"message":"CuadraApp API"}
+async def root():return {"message":"PLATIA API"}
 @api_router.get("/healthz")
 async def healthz():await db.command("ping");return {"status":"ok"}
 for r in (auth_router,business_router,products_router,inventory_router,sales_router,purchases_router,expenses_router,finance_export_router,dashboard_router,assistant_router,ai_router,rates_router,platform_router,subscription_router,reports_router,obligations_router,recipes_router,promotions_router,cash_closure_router,cubi_router,import_export_router):api_router.include_router(r)
