@@ -14,9 +14,16 @@ LOCK_MINUTES = 15
 
 
 async def _business_of(user: dict):
-    if not user.get("business_id"):
+    business_id = user.get("business_id")
+    if not business_id and user.get("role", "propietario") == "propietario":
+        business = await db.businesses.find_one({"owner_id": user["id"]}, {"_id": 0, "id": 1})
+        if business and business.get("id"):
+            business_id = business["id"]
+            await db.users.update_one({"id": user["id"]}, {"$set": {"business_id": business_id}})
+            user["business_id"] = business_id
+    if not business_id:
         return None
-    return await db.businesses.find_one({"id": user["business_id"]}, {"_id": 0})
+    return await db.businesses.find_one({"id": business_id}, {"_id": 0})
 
 
 @router.post("/register")
@@ -47,9 +54,6 @@ async def login(data: LoginIn, request: Request, response: Response):
 
     await db.login_attempts.delete_one({"identifier": email})
 
-    # The configured platform administrator is promoted at successful login as
-    # a self-healing safeguard. This removes the dependency on a prior startup
-    # migration/redeploy to establish the platform role.
     configured_admin = (settings.ADMIN_EMAIL or "").strip().lower()
     if configured_admin and email == configured_admin:
         await db.users.update_one(
