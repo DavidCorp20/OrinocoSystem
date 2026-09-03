@@ -4,6 +4,8 @@ import api,{apiError,streamChat} from "../lib/api";
 const QUICK_PROMPTS=["Ventas","Productos","Inventario","Ganancias","Proyección"];
 const renderMd=text=>(text||"").split(/(\*\*[^*]+\*\*)/g).map((part,i)=>part.startsWith("**")?<strong key={i}>{part.slice(2,-2)}</strong>:part);
 const normalize=s=>(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
+const isGreeting=s=>/^(hola|hol|buenas|hello|hey|holi)[!. ,]*$/i.test((s||"").trim());
+const isLegacyBroken=s=>/\{'term'\s*:\s*['\"]Margen bruto['\"]/.test(s||"")||/^En simple:\s*Margen bruto:/i.test((s||"").trim());
 const menuFor=(text,isFirst=false)=>{
  const t=normalize(text);
  if(isFirst)return QUICK_PROMPTS;
@@ -18,10 +20,15 @@ const menuFor=(text,isFirst=false)=>{
 };
 export default function AIAssistant({open,onClose}){
  const[messages,setMessages]=useState([]),[input,setInput]=useState(""),[sending,setSending]=useState(false),[error,setError]=useState(""),loadedRef=useRef(false),bottomRef=useRef(null);
- useEffect(()=>{if(!open||loadedRef.current)return;loadedRef.current=true;setError("");api.get("/assistant/history").then(r=>setMessages(r.data.messages||[])).catch(e=>setError(apiError(e,"No pude cargar el historial.")))},[open]);
+ useEffect(()=>{if(!open||loadedRef.current)return;loadedRef.current=true;setError("");api.get("/assistant/history").then(r=>setMessages((r.data.messages||[]).filter(m=>!isLegacyBroken(m.content)))).catch(e=>setError(apiError(e,"No pude cargar el historial.")))},[open]);
  const send=async text=>{let msg=(text??input).trim();if(!msg||sending)return;
-   const lastAssistant=[...messages].reverse().find(m=>m.role==="assistant")?.content||"";
    const n=normalize(msg);
+   // Greetings are conversational and never need analytics or the AI provider.
+   if(isGreeting(msg)){
+     setInput("");setError("");setMessages(m=>[...m,{role:"user",content:msg},{role:"assistant",content:"Hola. Soy Cubi, tu asesor de negocio. Puedo ayudarte con ventas, productos, inventario, ganancias y proyecciones. ¿Qué quieres revisar?"}]);
+     return;
+   }
+   const lastAssistant=[...messages].reverse().find(m=>m.role==="assistant")?.content||"";
    if(["si","sí","claro","dale","ok","okay"].includes(n)){
      const q=normalize(lastAssistant);
      if(q.includes("compare")&&q.includes("ganancia"))msg="Comparar por ganancia";
