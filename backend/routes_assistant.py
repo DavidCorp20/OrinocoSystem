@@ -14,6 +14,28 @@ router = APIRouter(tags=["assistant"])
 logger = logging.getLogger(__name__)
 SEED_CONTENT = {"Consulta inicial del negocio", "Estoy listo para ayudarte a revisar el negocio."}
 
+CUBI_SYSTEM = """Eres CUBI, el asesor inteligente de PLATIA. Piensa como un profesional senior de finanzas, economía, Business Intelligence, estadística y gestión de negocios, pero habla como un humano: claro, sencillo, directo, tranquilo y cercano.
+
+OBJETIVO: ayudar al propietario a entender qué está pasando, qué significa, qué riesgo u oportunidad existe y qué acción conviene considerar.
+
+REGLAS:
+1. Usa solo los datos del contexto para afirmar cifras o hechos. Nunca inventes.
+2. Separa HECHOS, INTERPRETACIONES e HIPÓTESIS. Una posible causa no es una causa demostrada.
+3. Si faltan datos, dilo y explica qué dato hace falta.
+4. Para preguntas simples responde simple; para preguntas profundas analiza más.
+5. Si usas un término financiero, tradúcelo inmediatamente a lenguaje cotidiano.
+6. Si preguntas por qué, explica qué datos apuntan a la conclusión sin inventar causalidad.
+7. Si preguntan qué hacer, prioriza hasta 3 acciones concretas y explica por qué.
+8. Si preguntan cómo está el negocio, entrega una lectura ejecutiva: situación, positivo, qué vigilar y qué haría primero.
+9. Señala riesgos sin alarmismo y oportunidades sin prometer resultados.
+10. No te presentes como contador, abogado, auditor certificado o asesor fiscal.
+11. Confianza: ALTA = dato directo; MEDIA = patrón que requiere contexto; HIPÓTESIS = explicación posible; INSUFICIENTE = faltan datos.
+12. Normalmente responde en 2 a 6 párrafos cortos o viñetas. No hagas informes largos salvo que el usuario los pida.
+13. Cuando sea útil, enseña brevemente cómo funciona el concepto. Ejemplo: margen bruto = lo que queda de una venta después de pagar el costo del producto.
+14. Piensa siempre: DATOS -> COMPARACIÓN -> INTERPRETACIÓN -> RIESGO/OPORTUNIDAD -> RECOMENDACIÓN.
+15. La inteligencia se mantiene constante; cambia la forma de comunicarla.
+"""
+
 async def _ensure_local_history_seed(business_id):
     if await db.assistant_messages.count_documents({"business_id": business_id}) > 0: return
     await db.assistant_messages.insert_many([
@@ -57,6 +79,28 @@ def _intent(message):
         if any(w in t for w in words):return k
     return "unknown"
 
+def _cubi_chat_context(insights, business, margin_data=None):
+    history=insights.get("history",{}) or {}; summary=insights.get("summary",{}) or {}
+    context={
+        "negocio":{"name":(business or {}).get("name","tu negocio"),"currency":(business or {}).get("currency","USD")},
+        "salud":insights.get("health",{}) or {},
+        "resumen":summary,
+        "historial":history,
+        "proyeccion":insights.get("forecast",{}) or {},
+        "productos_top":(insights.get("top_products") or [])[:8],
+        "abc":(insights.get("abc_analysis") or [])[:8],
+        "inventario":(insights.get("inventory_recommendations") or [])[:10],
+        "anomalia":insights.get("anomaly",{}) or {},
+        "diagnostico":insights.get("diagnosis",[]) or [],
+        "riesgos":insights.get("risks",[]) or [],
+        "oportunidades":insights.get("opportunities",[]) or [],
+        "recomendaciones":insights.get("recommendations",[]) or [],
+        "conceptos":insights.get("teaching_points",[]) or [],
+    }
+    if margin_data:
+        context["analisis_financiero"]={"summary":margin_data.get("summary",{}),"alerts":(margin_data.get("alerts") or [])[:10]}
+    return json.dumps(context,ensure_ascii=False,default=str)
+
 async def _native_cubi_reply(business_id,user_message,previous_messages=None):
     insights=await build_business_insights(db,business_id)
     history=insights.get("history",{}); forecast=insights.get("forecast",{}); inventory=insights.get("inventory_recommendations",[]); anomaly=insights.get("anomaly",{})
@@ -65,7 +109,6 @@ async def _native_cubi_reply(business_id,user_message,previous_messages=None):
     business=await db.businesses.find_one({"id":business_id},{"_id":0,"currency":1}) or {}; currency=business.get("currency","USD")
     urgent=[x for x in inventory if float(x.get("suggested_purchase",0) or 0)>0]
     previous=[x for x in (previous_messages or []) if x.get("content") and x.get("content") not in SEED_CONTENT]
-    last_user=_norm(next((x.get("content","") for x in reversed(previous) if x.get("role")=="user"),""))
     last_assistant=_norm(next((x.get("content","") for x in reversed(previous) if x.get("role")=="assistant"),""))
     intent=_intent(user_message); short=_norm(user_message)
     if intent=="unknown":
@@ -81,7 +124,7 @@ async def _native_cubi_reply(business_id,user_message,previous_messages=None):
         return "Todavía no tengo suficientes ventas para darte una conclusión útil."
     if intent=="improve_sales":
         if top:
-            p=top[0]; return f"Empezaría por {_pname(p)}: { _num(p.get('units')) } unidades vendidas. Podemos buscar cómo aumentar su venta y qué producto combinar con él."
+            p=top[0]; return f"Empezaría por {_pname(p)}: {_num(p.get('units'))} unidades vendidas. Podemos buscar cómo aumentar su venta y qué producto combinar con él."
         return "Empezaría por tus productos más vendidos y los que dejan más ganancia. Así sabemos dónde concentrar el esfuerzo."
     if intent=="sales_detail":
         trend=forecast.get("trend_percent")
@@ -134,11 +177,17 @@ async def assistant_chat(data:ChatIn,user:dict=Depends(require_business)):
             yield f"data: {json.dumps({'c':native_reply},ensure_ascii=False)}\n\n"; await db.assistant_messages.insert_one({"id":new_id(),"business_id":bid,"role":"assistant","content":native_reply,"created_at":now_iso()}); yield "data: [DONE]\n\n"
         return StreamingResponse(native_generator(),media_type="text/event-stream",headers={"Cache-Control":"no-cache, no-transform","X-Accel-Buffering":"no","Connection":"keep-alive"})
     try:
-        context=await build_assistant_context(bid,business or {}); margin_data=await margin_analysis(user); s=margin_data["summary"]; alerts=margin_data["alerts"][:10]
-        context+=f"\n\nANÁLISIS FINANCIERO AI-01 (90 días):\nIngresos: {s['revenue_90d']} | Costo: {s['realized_cost_90d']} | Utilidad: {s['realized_profit_90d']} | Margen: {s['realized_margin_percent']}%"
-        if alerts:context+="\nAlertas: "+" | ".join(a["message"] for a in alerts)
+        insights=await build_business_insights(db,bid)
+        margin_data=await margin_analysis(user)
+        context=await build_assistant_context(bid,business or {})
+        rich_context=_cubi_chat_context(insights,business or {},margin_data)
+        s=(margin_data.get("summary") or {})
+        context+=f"\n\nCUBI INTELLIGENCE STRUCTURED:\n{rich_context}"
+        context+=f"\n\nANÁLISIS FINANCIERO AI-01 (90 días):\nIngresos: {s.get('revenue_90d')} | Costo: {s.get('realized_cost_90d')} | Utilidad: {s.get('realized_profit_90d')} | Margen: {s.get('realized_margin_percent')}%"
+        alerts=(margin_data.get("alerts") or [])[:10]
+        if alerts:context+="\nAlertas: "+" | ".join(a.get("message","") for a in alerts)
     except Exception:logger.exception("[assistant] context failed"); context="No se pudo cargar parte del contexto operativo."
-    system_template=f'''Eres Cubi, asesor del negocio "{(business or {}).get("name","tu negocio")}". Habla en español natural, cercano y breve. Usa solo datos reales. No inventes. Entiende preguntas cortas usando el contexto. No uses lenguaje técnico ni informes largos. Da cifras cuando aporten valor y responde normalmente en 1 a 4 frases. Si no sabes algo, dilo. Moneda: {(business or {}).get("currency","USD")}.\n\nDATOS:\n{context}'''
+    system_template=CUBI_SYSTEM+f"\nNegocio: {(business or {}).get('name','tu negocio')}\nMoneda: {(business or {}).get('currency','USD')}\n\nDATOS DISPONIBLES:\n{context}"
     history_messages=await db.assistant_messages.find({"business_id":bid},{"_id":0}).sort("created_at",-1).to_list(12); history_messages.reverse(); messages=[{"role":"system","content":system_template}]
     for item in history_messages:
         if item.get("role") in {"user","assistant"} and item.get("content") and item.get("content") not in SEED_CONTENT:messages.append({"role":item["role"],"content":item["content"]})
@@ -149,7 +198,7 @@ async def assistant_chat(data:ChatIn,user:dict=Depends(require_business)):
             api_key=os.getenv("OPENROUTER_API_KEY") or settings.OPENAI_API_KEY; is_openrouter=bool(os.getenv("OPENROUTER_API_KEY"))
             if not api_key:raise RuntimeError("proveedor externo no configurado")
             kwargs={"api_key":api_key,"timeout":15.0}
-            if is_openrouter:kwargs.update({"base_url":"https://openrouter.ai/api/v1","default_headers":{"HTTP-Referer":"https://cuadrapp.up.railway.app","X-Title":"CuadraApp"}})
+            if is_openrouter:kwargs.update({"base_url":"https://openrouter.ai/api/v1","default_headers":{"HTTP-Referer":"https://cuadrapp.up.railway.app","X-Title":"PLATIA"}})
             client=AsyncOpenAI(**kwargs); model=(os.getenv("OPENROUTER_MODEL") or "openrouter/auto") if is_openrouter else (os.getenv("OPENAI_MODEL") or "gpt-5-mini"); stream=await asyncio.wait_for(client.chat.completions.create(model=model,messages=messages,stream=True),timeout=20); iterator=stream.__aiter__()
             while True:
                 if time.monotonic()-started>60:raise TimeoutError("proveedor externo tardó demasiado")
