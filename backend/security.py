@@ -5,8 +5,8 @@ import bcrypt
 import jwt
 from fastapi import Depends, HTTPException, Request, Response
 
-from config import settings
 from database import db
+from config import settings
 
 JWT_ALGORITHM = "HS256"
 ACCESS_MINUTES = 15
@@ -22,11 +22,11 @@ def verify_password(plain, hashed): return bcrypt.checkpw(plain.encode("utf-8"),
 
 
 def create_access_token(user_id, email):
-    return jwt.encode({"sub": user_id, "email": email, "type": "access", "exp": now() + timedelta(minutes=ACCESS_MINUTES)}, settings.JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return jwt.encode({"sub": str(user_id), "email": email, "type": "access", "exp": now() + timedelta(minutes=ACCESS_MINUTES)}, settings.JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
 def create_refresh_token(user_id):
-    return jwt.encode({"sub": user_id, "type": "refresh", "exp": now() + timedelta(days=REFRESH_DAYS)}, settings.JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return jwt.encode({"sub": str(user_id), "type": "refresh", "exp": now() + timedelta(days=REFRESH_DAYS)}, settings.JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
 def set_auth_cookies(response: Response, user: dict):
@@ -52,9 +52,18 @@ async def get_current_user(request: Request):
     except jwt.InvalidTokenError: raise HTTPException(status_code=401, detail="Token inválido")
     user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
     if not user: raise HTTPException(status_code=401, detail="Usuario no encontrado")
+
+    # Self-heal the most important onboarding/session invariant:
+    # an owner who already has a business must keep that business linked to
+    # the user even if an older account was created before business_id existed.
+    if not user.get("business_id") and user.get("role", "propietario") == "propietario":
+        existing_business = await db.businesses.find_one({"owner_id": user["id"]}, {"_id": 0, "id": 1})
+        if existing_business and existing_business.get("id"):
+            user["business_id"] = existing_business["id"]
+            await db.users.update_one({"id": user["id"]}, {"$set": {"business_id": existing_business["id"]}})
+
     if user.get("platform_role") != "superadmin" and user.get("approved") is not True: raise HTTPException(status_code=403, detail="Cuenta pendiente de aprobación")
     return user
-
 
 async def _check_tenant(user, roles):
     if not user.get("business_id"): raise HTTPException(status_code=400, detail="Primero completa el registro de tu negocio")
