@@ -1,9 +1,10 @@
 import axios from "axios";
 
-// CRA replaces REACT_APP_* at build time. If it is missing, same-origin /api is
-// the safest fallback (useful when frontend + API share the Railway domain).
+// CRA replaces REACT_APP_* at build time. PLATIA frontend and API are deployed
+// on separate Railway services, so never fall back to the frontend origin.
 const configuredBackend = (process.env.REACT_APP_BACKEND_URL || "").trim().replace(/\/$/, "");
-export const API_URL = `${configuredBackend || window.location.origin}/api`;
+const productionBackend = "https://orinocosystem-production.up.railway.app";
+export const API_URL = `${configuredBackend || productionBackend}/api`;
 
 const TOKEN_KEY = "cuadra_access_token";
 const readToken = () => {
