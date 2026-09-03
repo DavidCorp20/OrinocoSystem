@@ -56,6 +56,14 @@ class Settings:
                 + ". Revisa backend/.env o la configuración local."
             )
 
+        if cls.APP_ENV == "production":
+            if len(cls.JWT_SECRET or "") < 32:
+                raise RuntimeError("JWT_SECRET debe tener al menos 32 caracteres en production")
+            if cls.MONGO_URL.startswith("mongodb://127.0.0.1") or cls.MONGO_URL.startswith("mongodb://localhost"):
+                raise RuntimeError("MONGO_URL no puede apuntar a localhost en production")
+            if cls.ALLOW_DEV_RESET:
+                raise RuntimeError("ALLOW_DEV_RESET debe estar deshabilitado en production")
+
 
 settings = Settings()
 settings.ensure_required()
