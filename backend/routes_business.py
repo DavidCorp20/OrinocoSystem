@@ -8,15 +8,28 @@ from plan_access import require_user_capacity
 router = APIRouter(tags=["business"])
 BUSINESS_FIELDS = {"_id": 0}
 
+async def _resolve_business_id(user: dict):
+    business_id = user.get("business_id")
+    if business_id:
+        return business_id
+    if user.get("role", "propietario") == "propietario":
+        business = await db.businesses.find_one({"owner_id": user["id"]}, {"_id": 0, "id": 1})
+        if business and business.get("id"):
+            business_id = business["id"]
+            await db.users.update_one({"id": user["id"]}, {"$set": {"business_id": business_id}})
+    return business_id
+
 @router.get("/business")
 async def get_business(user: dict = Depends(get_current_user)):
-    if not user.get("business_id"): return {"business": None}
-    business = await db.businesses.find_one({"id": user["business_id"]}, BUSINESS_FIELDS)
+    business_id = await _resolve_business_id(user)
+    if not business_id: return {"business": None}
+    business = await db.businesses.find_one({"id": business_id}, BUSINESS_FIELDS)
     return {"business": business}
 
 @router.post("/business")
 async def create_business(data: BusinessIn, user: dict = Depends(get_current_user)):
-    if user.get("business_id"): raise HTTPException(400,"Ya tienes un negocio registrado")
+    business_id = await _resolve_business_id(user)
+    if business_id: raise HTTPException(400,"Ya tienes un negocio registrado")
     biz={"id":new_id(),"owner_id":user["id"],"name":data.name.strip(),"type":data.type,"currency":data.currency,"display_currency":"dual","price_reference":"usd","active":True,"bcv_mode":"auto","bcv_rate":None,"rif":None,"address":None,"phone":None,"created_at":now_iso()}
     await db.businesses.insert_one(biz);await db.users.update_one({"id":user["id"]},{"$set":{"business_id":biz["id"]}})
     for i,p in enumerate(data.initial_products):
