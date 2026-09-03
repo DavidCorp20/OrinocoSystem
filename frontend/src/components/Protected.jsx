@@ -24,23 +24,26 @@ export function NoAccess() {
 }
 
 export default function Protected({ children, requireBusiness = true }) {
-  const { status, business, isSuper } = useAuth();
+  const { status, user, business, isSuper } = useAuth();
   const loc = useLocation();
 
   if (status === "loading") return <LoadingScreen />;
   if (status === "guest") return <Navigate to="/auth" replace state={{ from: loc.pathname }} />;
 
   // A platform superadmin is not a tenant and therefore does not need a business.
-  // Never send the platform administrator through tenant onboarding/dashboard guards.
   if (isSuper) return <>{children}</>;
 
-  if (requireBusiness && !business) return <Navigate to="/onboarding" replace />;
-  if (!requireBusiness && business) return <Navigate to="/dashboard" replace />;
+  // The authenticated user carries the durable business_id. Do not send a user
+  // back to onboarding just because the business object has not hydrated yet.
+  const hasBusiness = Boolean(business || user?.business_id);
+
+  if (requireBusiness && !hasBusiness) return <Navigate to="/onboarding" replace />;
+  if (!requireBusiness && hasBusiness) return <Navigate to="/dashboard" replace />;
 
   return (
     <>
       {children}
-      {requireBusiness && business && <FirstRunTour />}
+      {requireBusiness && hasBusiness && <FirstRunTour />}
     </>
   );
 }
