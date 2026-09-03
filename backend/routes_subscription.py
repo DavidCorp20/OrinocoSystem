@@ -23,12 +23,14 @@ async def my_subscription(user: dict = Depends(require_roles("propietario", "adm
 async def submit_payment(data: MerchantPaymentIn,user:dict=Depends(require_roles("propietario","administrador"))):
     sub=await db.platform_subscriptions.find_one({"id":data.subscription_id,"business_id":user["business_id"],"status":{"$ne":"cancelado"}},{"_id":0})
     if not sub:raise HTTPException(404,"No se encontró una suscripción activa para tu negocio")
+    if not data.receipt_image:raise HTTPException(400,"Debes adjuntar una foto del comprobante de pago")
+    if not (data.receipt_image.startswith("data:image/") and ";base64," in data.receipt_image):raise HTTPException(400,"El comprobante debe ser una imagen válida")
     rate_data=await get_bcv_rate();rate=rate_data.get("rate") if rate_data else None
     if not rate or rate<=0:raise HTTPException(503,"No hay una tasa vigente disponible para registrar el pago")
     amount_usd=round(float(sub.get("monthly_price_usd") or 0),2)
     if amount_usd<=0:raise HTTPException(400,"La suscripción no tiene un monto mensual válido")
     amount_bs=round(amount_usd*float(rate),2);paid_at=data.paid_at or now_iso()
-    payment={"id":new_id(),"subscription_id":sub["id"],"business_id":user["business_id"],"amount":amount_usd,"amount_usd":amount_usd,"amount_bs":amount_bs,"payment_method":data.payment_method,"reference":data.reference,"paid_at":paid_at,"bcv_rate":float(rate),"rate_source":rate_data.get("provider"),"rate_date":rate_data.get("effective_date"),"notes":data.notes,"created_at":now_iso(),"created_by":user["id"],"status":"pendiente_verificacion"}
+    payment={"id":new_id(),"subscription_id":sub["id"],"business_id":user["business_id"],"amount":amount_usd,"amount_usd":amount_usd,"amount_bs":amount_bs,"payment_method":data.payment_method,"reference":data.reference,"paid_at":paid_at,"bcv_rate":float(rate),"rate_source":rate_data.get("provider"),"rate_date":rate_data.get("effective_date"),"notes":data.notes,"receipt_image":data.receipt_image,"created_at":now_iso(),"created_by":user["id"],"status":"pendiente_verificacion"}
     await db.platform_billing.insert_one(payment);payment.pop("_id",None)
     return {"ok":True,"payment":payment,"message":"Pago enviado para verificación."}
 @router.patch("/platform/billing/{billing_id}/verify")
