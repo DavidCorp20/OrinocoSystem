@@ -34,6 +34,9 @@ REGLAS:
 13. Cuando sea útil, enseña brevemente cómo funciona el concepto. Ejemplo: margen bruto = lo que queda de una venta después de pagar el costo del producto.
 14. Piensa siempre: DATOS -> COMPARACIÓN -> INTERPRETACIÓN -> RIESGO/OPORTUNIDAD -> RECOMENDACIÓN.
 15. La inteligencia se mantiene constante; cambia la forma de comunicarla.
+16. Nunca muestres objetos Python, diccionarios, JSON, claves internas ni estructuras del contexto al usuario.
+17. No repitas el mismo hecho con palabras diferentes dentro de una misma respuesta.
+18. Un saludo o mensaje casual debe recibir una respuesta conversacional breve; no descargues automáticamente el diagnóstico del negocio.
 """
 
 async def _ensure_local_history_seed(business_id):
@@ -61,10 +64,34 @@ def _pct(value):
 
 def _pname(p): return (p or {}).get("product_name") or (p or {}).get("name") or "ese producto"
 
+def _clean_text(value):
+    """Convierte estructuras internas de Cubi en lenguaje humano y nunca las expone literalmente."""
+    if isinstance(value, dict):
+        term=value.get("term") or value.get("name") or value.get("title")
+        meaning=value.get("meaning") or value.get("description") or value.get("message")
+        if term and meaning: return f"{term}: {meaning}"
+        if meaning: return str(meaning)
+        if term: return str(term)
+        return ""
+    if isinstance(value, (list, tuple, set)):
+        return "; ".join(x for x in (_clean_text(v) for v in value) if x)
+    return str(value or "").strip()
+
+def _unique(items):
+    """Elimina repeticiones exactas o contenidas entre hallazgos consecutivos."""
+    result=[]; seen=[]
+    for item in items:
+        text=_clean_text(item)
+        if not text: continue
+        key=" ".join(_norm(text).split())
+        if any(key==old or key in old or old in key for old in seen): continue
+        seen.append(key); result.append(text)
+    return result
+
 def _intent(message):
     t=_norm(message)
     if not t:return "unknown"
-    if t in {"hola","buenas","hello","hey","holi","buen dia","buenos dias","buenas tardes","buenas noches"} or t.startswith(("hola ","buenas ")):return "greeting"
+    if t in {"hola","hol","buenas","hello","hey","holi","buen dia","buenos dias","buenas tardes","buenas noches"} or t.startswith(("hola ","buenas ")):return "greeting"
     groups={
       "business_health":("como esta mi negocio","como viene mi negocio","como va mi negocio","como estoy","como estamos","salud del negocio","estado del negocio","como va el negocio","que tal va mi negocio","como esta el negocio"),
       "improve_sales":("mejorar ventas","vender mas","aumentar ventas","subir ventas","mas ventas","como vendo","que hago para vender","mas clientes","conseguir clientes"),
@@ -91,82 +118,43 @@ def _cubi_chat_context(insights, business, margin_data=None):
     health=insights.get("health_score",{}) or insights.get("health",{}) or {}
     context={
         "negocio":{"name":(business or {}).get("name","tu negocio"),"currency":(business or {}).get("currency","USD")},
-        "salud":health,
-        "resumen":summary,
-        "historial":history,
-        "proyeccion":insights.get("forecast",{}) or {},
-        "productos_top":(insights.get("top_products") or [])[:8],
-        "abc":(insights.get("abc_analysis") or [])[:8],
-        "inventario":(insights.get("inventory_recommendations") or [])[:10],
-        "anomalia":insights.get("anomaly",{}) or {},
-        "diagnostico":analysis.get("diagnosis",insights.get("diagnosis",[])) or [],
-        "hechos":analysis.get("facts",[]) or [],
-        "riesgos":analysis.get("risks",insights.get("risks",[])) or [],
-        "oportunidades":analysis.get("opportunities",insights.get("opportunities",[])) or [],
-        "recomendaciones":analysis.get("recommendations",insights.get("recommendations",[])) or [],
-        "conceptos":analysis.get("teaching",insights.get("teaching_points",[])) or [],
-        "confianza":analysis.get("confidence",health.get("confidence")),
-        "motivo_confianza":analysis.get("confidence_reason",health.get("confidence_reason")),
+        "salud":health,"resumen":summary,"historial":history,"proyeccion":insights.get("forecast",{}) or {},
+        "productos_top":(insights.get("top_products") or [])[:8],"abc":(insights.get("abc_analysis") or [])[:8],
+        "inventario":(insights.get("inventory_recommendations") or [])[:10],"anomalia":insights.get("anomaly",{}) or {},
+        "diagnostico":analysis.get("diagnosis",insights.get("diagnosis",[])) or [],"hechos":analysis.get("facts",[]) or [],
+        "riesgos":analysis.get("risks",insights.get("risks",[])) or [],"oportunidades":analysis.get("opportunities",insights.get("opportunities",[])) or [],
+        "recomendaciones":analysis.get("recommendations",insights.get("recommendations",[])) or [],"conceptos":analysis.get("teaching",insights.get("teaching_points",[])) or [],
+        "confianza":analysis.get("confidence",health.get("confidence")),"motivo_confianza":analysis.get("confidence_reason",health.get("confidence_reason")),
     }
-    if margin_data:
-        context["analisis_financiero"]={"summary":margin_data.get("summary",{}),"alerts":(margin_data.get("alerts") or [])[:10]}
+    if margin_data: context["analisis_financiero"]={"summary":margin_data.get("summary",{}),"alerts":(margin_data.get("alerts") or [])[:10]}
     return json.dumps(context,ensure_ascii=False,default=str)
 
 def _native_expert_reply(insights, user_message, currency="USD"):
-    history=insights.get("history",{}) or {}
-    summary=insights.get("summary",{}) or {}
-    analysis=insights.get("analysis",{}) or {}
-    health=insights.get("health_score",{}) or insights.get("health",{}) or {}
-    forecast=insights.get("forecast",{}) or {}
-    top=insights.get("top_products",[]) or []
-    inventory=insights.get("inventory_recommendations",[]) or []
-    anomaly=insights.get("anomaly",{}) or {}
-    facts=analysis.get("facts",[]) or []
-    diagnosis=analysis.get("diagnosis",[]) or []
-    risks=analysis.get("risks",[]) or []
-    opportunities=analysis.get("opportunities",[]) or []
-    recommendations=analysis.get("recommendations",[]) or []
-    teaching=analysis.get("teaching",[]) or []
-    trend=forecast.get("trend_percent")
-    sales_count=history.get("sales_count",0)
-    observed_days=history.get("observed_days",0)
-    t=_norm(user_message)
+    history=insights.get("history",{}) or {}; analysis=insights.get("analysis",{}) or {}; health=insights.get("health_score",{}) or insights.get("health",{}) or {}; forecast=insights.get("forecast",{}) or {}; top=insights.get("top_products",[]) or []; inventory=insights.get("inventory_recommendations",[]) or []; anomaly=insights.get("anomaly",{}) or {}; facts=analysis.get("facts",[]) or []; diagnosis=analysis.get("diagnosis",[]) or []; risks=analysis.get("risks",[]) or []; opportunities=analysis.get("opportunities",[]) or []; recommendations=analysis.get("recommendations",[]) or []; teaching=analysis.get("teaching",[]) or []
+    trend=forecast.get("trend_percent"); sales_count=history.get("sales_count",0); observed_days=history.get("observed_days",0)
+    def first(items): return _clean_text(items[0]) if items else None
+    def bullets(items,limit=2): return "\n".join(f"• {_clean_text(x)}" for x in items[:limit] if _clean_text(x))
 
-    def first(items): return items[0] if items else None
-    def bullets(items,limit=2): return "\n".join(f"• {x}" for x in items[:limit])
-
-    # Preguntas de salud del negocio: lectura ejecutiva, no menú.
-    if _intent(user_message)=="business_health":
+    intent=_intent(user_message)
+    if intent=="greeting":
+        return "Hola. Soy Cubi, tu asesor de negocio. Puedo ayudarte a entender tus ventas, inventario, gastos, rentabilidad y flujo de caja. ¿Qué quieres revisar?"
+    if intent=="business_health":
         parts=[]
         if trend is not None:
             direction="creciendo" if trend>0 else "bajando" if trend<0 else "estable"
             parts.append(f"En general, tu negocio viene {direction}. Las ventas recientes están {_pct(abs(trend))} {'por encima' if trend>0 else 'por debajo' if trend<0 else 'muy cerca del nivel del'} período anterior.")
-        elif sales_count:
-            parts.append(f"Tengo {sales_count} ventas para analizar en {observed_days} días con actividad.")
-        if diagnosis:
-            parts.append(f"La lectura principal de Cubi es: {first(diagnosis)}")
-        elif facts:
-            parts.append(f"Lo más importante que veo es: {first(facts)}")
-        if risks:
-            parts.append(f"Lo que vigilaría: {first(risks)}")
-        elif opportunities:
-            parts.append(f"La oportunidad más clara está en: {first(opportunities)}")
-        if recommendations:
-            parts.append(f"Mi primera acción sería: {first(recommendations)}")
-        elif trend is not None and trend>0:
-            parts.append("Ojo: vender más no significa automáticamente ganar más. Lo siguiente que revisaría es margen y gastos.")
+        elif sales_count: parts.append(f"Tengo {sales_count} ventas para analizar en {observed_days} días con actividad.")
+        if diagnosis: parts.append(first(diagnosis))
+        elif facts: parts.append(first(facts))
+        if risks: parts.append(f"Lo que vigilaría: {first(risks)}")
+        elif opportunities: parts.append(f"La oportunidad más clara está en: {first(opportunities)}")
+        if recommendations: parts.append(f"Mi primera acción sería: {first(recommendations)}")
+        elif trend is not None and trend>0: parts.append("Vender más no significa automáticamente ganar más. Lo siguiente que revisaría es margen y gastos.")
         if health:
             score=health.get("score") or health.get("value")
             if score is not None: parts.append(f"Salud estimada: {score}/100.")
-        if not parts:
-            return "Todavía no tengo suficientes datos para darte una lectura seria del negocio. Necesito más actividad registrada."
-        return "\n\n".join(parts[:5])
-
-    intent=_intent(user_message)
-    if intent=="greeting":
-        return f"¡Hola! 👋 Tengo {sales_count} ventas para analizar. Puedes preguntarme directamente cómo va el negocio, dónde estás ganando o perdiendo dinero, qué deberías hacer, qué productos conviene reponer o qué tendencia estoy viendo." if sales_count else "¡Hola! 👋 Estoy listo para analizar tu negocio. Pregúntame lo que quieras sobre ventas, ganancias, gastos, inventario o crecimiento."
-    if sales_count==0 and intent in {"sales","sales_detail","improve_sales","top_products","profit","forecast","anomaly","business_health"}:
-        return "Todavía no tengo suficientes ventas para darte una conclusión útil. Prefiero decirte eso antes que inventar una respuesta."
+        return "\n\n".join(_unique(parts)[:5]) if parts else "Todavía no tengo suficientes datos para darte una lectura seria del negocio. Necesito más actividad registrada."
+    if sales_count==0 and intent in {"sales","sales_detail","improve_sales","top_products","profit","forecast","anomaly"}: return "Todavía no tengo suficientes ventas para darte una conclusión útil. Prefiero decirte eso antes que inventar una respuesta."
     if intent=="recommendation":
         if recommendations:return "Si tuviera que priorizar ahora mismo, empezaría por esto:\n"+bullets(recommendations,3)
         if risks:return "Primero atendería esto:\n"+bullets(risks,3)
@@ -190,7 +178,7 @@ def _native_expert_reply(insights, user_message, currency="USD"):
         return "Las ventas están estables. Eso no es necesariamente malo: ahora podemos buscar si hay margen para crecer."
     if intent=="improve_sales":
         if opportunities:return "Yo atacaría primero estas oportunidades:\n"+bullets(opportunities,3)
-        if top:return f"Empezaría por { _pname(top[0]) }: ya tiene movimiento y podemos buscar productos complementarios o mejorar su margen."
+        if top:return f"Empezaría por {_pname(top[0])}: ya tiene movimiento y podemos buscar productos complementarios o mejorar su margen."
         return "Empezaría identificando qué productos tienen mejor combinación de demanda y margen."
     if intent=="top_products":
         if not top:return "Todavía no tengo suficientes datos para identificar tus productos más vendidos."
@@ -199,16 +187,12 @@ def _native_expert_reply(insights, user_message, currency="USD"):
     if intent=="restock":
         urgent=[x for x in inventory if float(x.get("suggested_purchase",0) or 0)>0]
         if not urgent:return "No veo una reposición urgente en los datos disponibles. Eso no significa que todo el inventario esté perfecto; puedo revisar riesgo de capital inmovilizado y productos lentos."
-        rows=[]
-        for p in urgent[:3]: rows.append(f"• {_pname(p)} — sugerencia de compra: {_num(p.get('suggested_purchase'))} unidades")
+        rows=[f"• {_pname(p)} — sugerencia de compra: {_num(p.get('suggested_purchase'))} unidades" for p in urgent[:3]]
         return "Priorizaría estas reposiciones:\n"+"\n".join(rows)+"\n\nLa idea es evitar quedarte sin productos con movimiento sin comprar de más."
     if intent=="profit":
         candidates=[p for p in (insights.get("abc_analysis",[]) or []) if p.get("profit") is not None]
         if candidates:
-            p=max(candidates,key=lambda x:float(x.get("profit") or 0))
-            response=f"El producto que más ganancia aporta según los datos disponibles es {_pname(p)}: {_money(p.get('profit'),currency)}, con un margen de {_pct(p.get('margin_percent'))}."
-            response+="\n\nMargen significa, en simple, cuánto te queda de una venta después de pagar lo que te costó el producto."
-            return response
+            p=max(candidates,key=lambda x:float(x.get("profit") or 0)); response=f"El producto que más ganancia aporta según los datos disponibles es {_pname(p)}: {_money(p.get('profit'),currency)}, con un margen de {_pct(p.get('margin_percent'))}."; response+="\n\nEn simple: el margen bruto es lo que queda de una venta después de pagar el costo del producto."; return response
         if diagnosis:return f"Puedo ver la operación, pero todavía no tengo costos suficientes para afirmar una ganancia por producto. {first(diagnosis)}"
         return "Todavía no tengo costos suficientes para calcular la ganancia con confianza."
     if intent=="cash":
@@ -225,31 +209,24 @@ def _native_expert_reply(insights, user_message, currency="USD"):
         if not forecast.get("available"):return "Todavía no tengo suficientes datos para hacer una buena proyección. Prefiero no darte un número que parezca preciso sin tener una base sólida."
         return f"Para los próximos {forecast.get('horizon_days',7)} días estimo unas ventas de {_money(forecast.get('predicted_period_revenue'),currency)}. Es una proyección basada en el comportamiento registrado, no una garantía."
     if intent=="anomaly":
-        if anomaly.get("is_anomaly"):
-            return "Sí, detecté un comportamiento fuera de lo habitual. Lo tomaría como una señal para investigar, no como una explicación automática de lo que ocurrió."
+        if anomaly.get("is_anomaly"):return "Sí, detecté un comportamiento fuera de lo habitual. Lo tomaría como una señal para investigar, no como una explicación automática de lo que ocurrió."
         return "No veo un comportamiento especialmente fuera de lo normal en los ingresos recientes."
-    if intent=="customers":
-        return "Todavía no tengo una medición completa del comportamiento de clientes. No quiero fingir precisión donde no la tengo."
-    if intent=="business_health":
-        return _native_expert_reply(insights,"cómo viene mi negocio",currency)
-    # Conversación abierta: usar el diagnóstico real antes de volver a un menú.
+    if intent=="customers":return "Todavía no tengo una medición completa del comportamiento de clientes. No quiero fingir precisión donde no la tengo."
     if diagnosis or risks or opportunities or recommendations:
         response=[]
         if diagnosis: response.append(first(diagnosis))
         if risks: response.append(f"Vigilaría: {first(risks)}")
         if opportunities: response.append(f"Oportunidad: {first(opportunities)}")
         if recommendations: response.append(f"Yo haría primero: {first(recommendations)}")
-        if teaching: response.append(f"En simple: {first(teaching)}")
-        return "\n\n".join(response[:5])
-    if top:
-        return f"Estoy viendo tu negocio desde varias perspectivas. { _pname(top[0]) } es uno de los productos con mayor movimiento. Si me preguntas algo concreto, puedo analizar el impacto en ventas, margen, inventario o crecimiento."
+        if teaching:
+            teach=first(teaching)
+            if teach: response.append(f"En simple: {teach}")
+        return "\n\n".join(_unique(response)[:4])
+    if top:return f"Estoy viendo tu negocio desde varias perspectivas. {_pname(top[0])} es uno de los productos con mayor movimiento. Si me preguntas algo concreto, puedo analizar el impacto en ventas, margen, inventario o crecimiento."
     return "Todavía necesito más datos para darte una lectura útil del negocio."
 
 async def _native_cubi_reply(business_id,user_message,previous_messages=None):
-    insights=await build_business_insights(db,business_id)
-    business=await db.businesses.find_one({"id":business_id},{"_id":0,"name":1,"currency":1}) or {}
-    currency=business.get("currency","USD")
-    return _native_expert_reply(insights,user_message,currency)
+    insights=await build_business_insights(db,business_id); business=await db.businesses.find_one({"id":business_id},{"_id":0,"name":1,"currency":1}) or {}; currency=business.get("currency","USD"); return _native_expert_reply(insights,user_message,currency)
 
 @router.get("/assistant/status")
 async def assistant_status(user:dict=Depends(require_business)):
@@ -271,14 +248,7 @@ async def assistant_chat(data:ChatIn,user:dict=Depends(require_business)):
             yield f"data: {json.dumps({'c':native_reply},ensure_ascii=False)}\n\n"; await db.assistant_messages.insert_one({"id":new_id(),"business_id":bid,"role":"assistant","content":native_reply,"created_at":now_iso()}); yield "data: [DONE]\n\n"
         return StreamingResponse(native_generator(),media_type="text/event-stream",headers={"Cache-Control":"no-cache, no-transform","X-Accel-Buffering":"no","Connection":"keep-alive"})
     try:
-        insights=await build_business_insights(db,bid)
-        margin_data=await margin_analysis(user)
-        context=await build_assistant_context(bid,business or {})
-        rich_context=_cubi_chat_context(insights,business or {},margin_data)
-        s=(margin_data.get("summary") or {})
-        context+=f"\n\nCUBI INTELLIGENCE STRUCTURED:\n{rich_context}"
-        context+=f"\n\nANÁLISIS FINANCIERO AI-01 (90 días):\nIngresos: {s.get('revenue_90d')} | Costo: {s.get('realized_cost_90d')} | Utilidad: {s.get('realized_profit_90d')} | Margen: {s.get('realized_margin_percent')}%"
-        alerts=(margin_data.get("alerts") or [])[:10]
+        insights=await build_business_insights(db,bid); margin_data=await margin_analysis(user); context=await build_assistant_context(bid,business or {}); rich_context=_cubi_chat_context(insights,business or {},margin_data); s=(margin_data.get("summary") or {}); context+=f"\n\nCUBI INTELLIGENCE STRUCTURED:\n{rich_context}"; context+=f"\n\nANÁLISIS FINANCIERO AI-01 (90 días):\nIngresos: {s.get('revenue_90d')} | Costo: {s.get('realized_cost_90d')} | Utilidad: {s.get('realized_profit_90d')} | Margen: {s.get('realized_margin_percent')}%"; alerts=(margin_data.get("alerts") or [])[:10]
         if alerts:context+="\nAlertas: "+" | ".join(a.get("message","") for a in alerts)
     except Exception:logger.exception("[assistant] context failed"); context="No se pudo cargar parte del contexto operativo."
     system_template=CUBI_SYSTEM+f"\nNegocio: {(business or {}).get('name','tu negocio')}\nMoneda: {(business or {}).get('currency','USD')}\n\nDATOS DISPONIBLES:\n{context}"
