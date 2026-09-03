@@ -7,14 +7,14 @@ export const API_URL = `${configuredBackend || window.location.origin}/api`;
 
 const TOKEN_KEY = "cuadra_access_token";
 const readToken = () => {
-  try { return sessionStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; }
+  try { return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; }
 };
 const saveToken = (token) => {
   if (!token) return;
-  try { sessionStorage.setItem(TOKEN_KEY, token); } catch {}
+  try { localStorage.setItem(TOKEN_KEY, token); } catch {}
 };
 const clearToken = () => {
-  try { sessionStorage.removeItem(TOKEN_KEY); } catch {}
+  try { localStorage.removeItem(TOKEN_KEY); sessionStorage.removeItem(TOKEN_KEY); } catch {}
 };
 
 const api = axios.create({ baseURL: API_URL, withCredentials: true });
@@ -27,9 +27,7 @@ api.interceptors.request.use((config) => {
 let refreshing = null;
 api.interceptors.response.use(
   (response) => {
-    if (response.config?.url === "/auth/login" && response.data?.access_token) {
-      saveToken(response.data.access_token);
-    }
+    if (response.config?.url === "/auth/login" && response.data?.access_token) saveToken(response.data.access_token);
     return response;
   },
   async (error) => {
