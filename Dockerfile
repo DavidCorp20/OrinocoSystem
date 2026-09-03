@@ -16,4 +16,5 @@ WORKDIR /app/backend
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "exec uvicorn server:app --host 0.0.0.0 --port ${PORT:-8000}"]
+ENTRYPOINT ["/bin/sh", "-c"]
+CMD ["exec uvicorn server:app --host 0.0.0.0 --port ${PORT:-8000} --log-level info"]
