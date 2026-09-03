@@ -82,8 +82,11 @@ async def create_billing(data:PlatformBillingIn,user:dict=Depends(require_supera
     if next_due:await db.platform_subscriptions.update_one({"id":sub["id"]},{"$set":{"status":"activo","due_date":next_due,"updated_at":now_iso()}});await db.businesses.update_one({"id":sub["business_id"]},{"$set":{"subscription_status":"activo","subscription_due_date":next_due}})
     bill.pop("_id",None);return {"billing":bill,"next_due_date":next_due}
 @router.get("/platform/billing")
-async def list_billing(business_id:str|None=None,user:dict=Depends(require_superadmin)):
-    q={} if not business_id else {"business_id":business_id};return {"billing":await db.platform_billing.find(q,{"_id":0}).sort("paid_at",-1).to_list(5000)}
+async def list_billing(business_id:str|None=None,status:str|None=None,user:dict=Depends(require_superadmin)):
+    q={}
+    if business_id:q["business_id"]=business_id
+    if status:q["status"]=status
+    return {"billing":await db.platform_billing.find(q,{"_id":0}).sort("paid_at",-1).to_list(5000)}
 @router.get("/platform/billing-metrics")
 async def billing_metrics(user:dict=Depends(require_superadmin)):
     now=datetime.now(timezone.utc);month=now.strftime("%Y-%m");subs=await db.platform_subscriptions.find({}, {"_id":0}).to_list(10000);paid=await db.platform_billing.find({}, {"_id":0}).to_list(10000);expenses=await db.platform_expenses.find({}, {"_id":0}).to_list(5000);active=[s for s in subs if s.get("status")=="activo"];mrr=round(sum(float(s.get("monthly_price_usd",0) or 0) for s in active),2);revenue=round(sum(float(x.get("amount",0) or 0) for x in paid if _month(x.get("paid_at"))==month),2);costs=round(sum(float(e.get("amount",0) or 0) for e in expenses if _month(e.get("date") or e.get("created_at"))==month),2);cutoff=(now+timedelta(days=7)).date().isoformat();due=sorted([s for s in subs if s.get("status") in {"activo","pendiente","vencido"} and s.get("due_date") and s.get("due_date")<=cutoff],key=lambda x:x.get("due_date") or "")[:100];return {"month":month,"active_customers":len(active),"mrr_usd":mrr,"projected_revenue_usd":mrr,"collected_revenue_usd":revenue,"platform_costs_usd":costs,"projected_net_usd":round(mrr-costs,2),"cash_net_usd":round(revenue-costs,2),"due_soon":due}
