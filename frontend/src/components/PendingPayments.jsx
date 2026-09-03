@@ -7,8 +7,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { fmtDate, fmtMoney, fmtNum } from "../lib/format";
 
 export default function PendingPayments() {
-  const [payments, setPayments] = useState([]), [selected, setSelected] = useState(null), [loading, setLoading] = useState(false), [busy, setBusy] = useState(null);
-  const load = async () => { setLoading(true); try { const r = await api.get("/platform/billing"); setPayments((r.data.billing || []).filter(p => p.status === "pendiente_verificacion")); } catch (e) { toast.error(apiError(e)); } finally { setLoading(false); } };
+  const [payments, setPayments] = useState([]), [selected, setSelected] = useState(null), [busy, setBusy] = useState(null);
+  const load = async () => { try { const r = await api.get("/platform/billing?status=pendiente_verificacion"); setPayments(r.data.billing || []); } catch (e) { toast.error(apiError(e)); } };
   useEffect(() => { load(); const id = setInterval(load, 30000); return () => clearInterval(id); }, []);
   const verify = async (id, approved) => { setBusy(id); try { await api.patch(`/platform/billing/${id}/verify?approved=${approved}`); toast.success(approved ? "Pago aprobado y suscripción actualizada" : "Pago rechazado"); setSelected(null); load(); } catch (e) { toast.error(apiError(e)); } finally { setBusy(null); } };
   return <>{payments.length > 0 && <button type="button" onClick={load} className="fixed right-5 bottom-24 z-40 flex items-center gap-2 rounded-full border bg-card px-4 py-2.5 text-sm font-bold shadow-xl"><Clock3 className="w-4 h-4 text-amber-600"/>Pagos pendientes <span className="rounded-full bg-amber-500 px-2 py-0.5 text-xs text-white">{payments.length}</span></button>}
