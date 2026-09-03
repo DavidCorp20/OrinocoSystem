@@ -97,14 +97,17 @@ export async function streamChat(message, onToken, onDone) {
   };
   try {
     for (;;) {
-      if (Date.now() - lastData > 20000) { try { await reader.cancel(); } catch {} throw new Error("Pyme tardó demasiado en responder. Puedes reintentar."); }
+      // Cubi puede necesitar más de 20s para leer y analizar historiales grandes
+      // de ventas/inventario antes de emitir el primer token. No convertir ese
+      // análisis válido en un falso error de conexión.
+      if (Date.now() - lastData > 60000) { try { await reader.cancel(); } catch {} throw new Error("Cubi tardó demasiado en responder. Puedes reintentar."); }
       const { done, value } = await reader.read(); if (done) break;
       lastData = Date.now(); buf += dec.decode(value, { stream: true });
       const parts = buf.split(/\r?\n\r?\n/); buf = parts.pop() || ""; for (const part of parts) consume(part);
     }
     buf += dec.decode(); if (buf.trim()) consume(buf);
   } finally { reader.releaseLock(); }
-  if (!received) throw new Error("Pyme no devolvió contenido. Puedes reintentar.");
+  if (!received) throw new Error("Cubi no devolvió contenido. Puedes reintentar.");
   onDone?.(doneSignal);
 }
 
