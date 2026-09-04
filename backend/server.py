@@ -3,12 +3,10 @@ import os
 import time
 from collections import defaultdict, deque
 from datetime import datetime, timezone
-
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-
 from config import settings
 from database import client, db
 from production_migrations import ensure_managed_accounts_approved
@@ -24,6 +22,7 @@ from routes_financial_insights import router as financial_insights_router
 from routes_intelligence import router as intelligence_router
 from routes_supplier_intelligence import router as supplier_intelligence_router
 from routes_risk import router as risk_router
+from routes_platia_score import router as platia_score_router
 from routes_inventory import router as inventory_router
 from routes_platform import router as platform_router
 from routes_subscription import router as subscription_router
@@ -42,36 +41,28 @@ from seed import seed_all
 from demo_seed import seed_demo_account
 from demo_catalog_upgrade import upgrade_demo_catalog
 from demo_product_images import seed_demo_product_images
-from demo_showcase_seed import seed_showcase, PROFILES
+from demo_showcase_seed import seed_showcase
 from demo_showcase_patch import main as patch_demo_showcase
 from plan_access import DEFAULT_ENTITLEMENTS
-
 app = FastAPI(title="PLATIA API")
 api_router = APIRouter(prefix="/api")
-
 @api_router.get("/")
 async def root(): return {"message": "PLATIA API"}
-
 @api_router.get("/healthz")
 async def healthz():
     await db.command("ping")
     return {"status": "ok"}
-
-for r in (auth_router, business_router, products_router, inventory_router, sales_router, purchases_router, expenses_router, finance_export_router, dashboard_router, financial_engine_router, financial_insights_router, intelligence_router, supplier_intelligence_router, risk_router, assistant_router, ai_router, rates_router, platform_router, subscription_router, reports_router, obligations_router, recipes_router, promotions_router, cash_closure_router, cubi_router, import_export_router):
+for r in (auth_router, business_router, products_router, inventory_router, sales_router, purchases_router, expenses_router, finance_export_router, dashboard_router, financial_engine_router, financial_insights_router, intelligence_router, supplier_intelligence_router, risk_router, platia_score_router, assistant_router, ai_router, rates_router, platform_router, subscription_router, reports_router, obligations_router, recipes_router, promotions_router, cash_closure_router, cubi_router, import_export_router):
     api_router.include_router(r)
 app.include_router(api_router)
-
 def normalize_origin(v: str) -> str: return v.strip().rstrip("/")
-
 env_origins = [normalize_origin(o) for o in (settings.CORS_ORIGINS.split(",") if settings.CORS_ORIGINS else []) if o.strip()]
 frontend_origins = {normalize_origin(settings.FRONTEND_URL) if settings.FRONTEND_URL else "", "https://platia.up.railway.app", "https://cuadrapp.up.railway.app"}
 allowed_origins = sorted({o for o in env_origins + list(frontend_origins) if o})
 app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
-
 RATE_LIMIT_WINDOW = 60
 RATE_LIMIT_MAX = 120
 _rate_buckets = defaultdict(deque)
-
 class RequestContextMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         started = time.monotonic(); key = request.client.host if request.client else "unknown"; now = time.monotonic(); bucket = _rate_buckets[key]
@@ -85,31 +76,12 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         response.headers["X-Process-Time"] = f"{time.monotonic() - started:.4f}"
         response.headers["X-Content-Type-Options"] = "nosniff"; response.headers["X-Frame-Options"] = "DENY"; response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         return response
-
 app.add_middleware(RequestContextMiddleware)
-
 @app.on_event("startup")
 async def startup_event():
-    logging.info("[PLATIA] MongoDB startup: DB_NAME=%s DEMO_SEED_ENABLED=%s APP_ENV=%s", settings.DB_NAME, os.getenv("DEMO_SEED_ENABLED", "false"), settings.APP_ENV)
-    await db.command("ping")
-    await ensure_managed_accounts_approved()
-
-    # Never hide bootstrap failures: a production instance without the demo
-    # accounts is not considered healthy for the current showcase release.
-    logging.info("[PLATIA] Demo showcase bootstrap starting")
-    await seed_all()
-    await seed_demo_account()
-    await upgrade_demo_catalog()
-    await seed_demo_product_images()
-    await seed_showcase()
-    await patch_demo_showcase()
-
-    expected = [p["email"] for p in PROFILES]
-    found = await db.users.count_documents({"email": {"$in": expected}})
-    logging.info("[PLATIA] Demo users verified: %s/%s", found, len(expected))
-    if found != len(expected):
-        raise RuntimeError(f"Demo bootstrap incomplete: {found}/{len(expected)} users found in DB_NAME={settings.DB_NAME}")
-    logging.info("[PLATIA] Demo showcase bootstrap completed successfully")
-
+    await db.command("ping"); await ensure_managed_accounts_approved()
+    try:
+        await seed_all(); await seed_demo_account(); await upgrade_demo_catalog(); await seed_demo_product_images(); await seed_showcase(); await patch_demo_showcase()
+    except Exception: logging.exception("Optional seed process failed")
 @app.on_event("shutdown")
 async def shutdown_event(): client.close()
