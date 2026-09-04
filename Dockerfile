@@ -17,4 +17,4 @@ WORKDIR /app/backend
 EXPOSE 8000
 
 ENTRYPOINT ["/bin/sh", "-c"]
-CMD ["python demo_showcase_seed.py && exec uvicorn server:app --host 0.0.0.0 --port ${PORT:-8000} --log-level info"]
+CMD ["python demo_showcase_seed.py && python demo_showcase_patch.py && exec uvicorn server:app --host 0.0.0.0 --port ${PORT:-8000} --log-level info"]
