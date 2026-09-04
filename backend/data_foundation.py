@@ -15,7 +15,6 @@ def _now():
 
 async def ensure_data_foundation():
     """Create tenant-safe indexes and backfill canonical entities idempotently."""
-    # Tenant isolation + common time-series access patterns.
     indexes = {
         "users": [("business_id", ASCENDING), ("email", ASCENDING)],
         "businesses": [("id", ASCENDING)],
@@ -28,7 +27,7 @@ async def ensure_data_foundation():
         "purchases": [("business_id", ASCENDING), ("created_at", DESCENDING)],
         "inventory_movements": [("business_id", ASCENDING), ("product_id", ASCENDING), ("created_at", DESCENDING)],
         "expenses": [("business_id", ASCENDING), ("date", DESCENDING)],
-        "cash_movements": [("business_id", ASCENDING), ("created_at", DESCENDING)],
+        "cash_movements": [("business_id", ASCENDING), ("occurred_at", DESCENDING), ("source_type", ASCENDING), ("source_id", ASCENDING)],
         "obligations": [("business_id", ASCENDING), ("kind", ASCENDING), ("status", ASCENDING), ("due_date", ASCENDING)],
         "obligation_payments": [("business_id", ASCENDING), ("obligation_id", ASCENDING), ("paid_at", DESCENDING)],
     }
@@ -36,11 +35,8 @@ async def ensure_data_foundation():
         try:
             await db[collection].create_index(fields)
         except Exception:
-            # Some older databases can contain duplicate legacy values. Do not
-            # block application startup; the indexes above are non-unique.
             pass
 
-    # Canonical categories from the existing product.category string field.
     async for product in db.products.find({"business_id": {"$exists": True}, "category": {"$nin": [None, ""]}}, {"business_id": 1, "category": 1}):
         name = str(product.get("category", "")).strip()
         if not name:
@@ -51,13 +47,11 @@ async def ensure_data_foundation():
             upsert=True,
         )
 
-    # Canonical suppliers from products and historical purchases.
     async for purchase in db.purchases.find({"business_id": {"$exists": True}, "supplier": {"$nin": [None, ""]}}, {"business_id": 1, "supplier": 1, "supplier_rif": 1}):
         await _ensure_supplier_doc(purchase["business_id"], purchase.get("supplier"), purchase.get("supplier_rif"))
     async for product in db.products.find({"business_id": {"$exists": True}, "supplier": {"$nin": [None, ""]}}, {"business_id": 1, "supplier": 1}):
         await _ensure_supplier_doc(product["business_id"], product.get("supplier"), None)
 
-    # Canonical customers from historical sales.
     async for sale in db.sales.find({"business_id": {"$exists": True}, "customer_name": {"$nin": [None, ""]}}, {"business_id": 1, "customer_name": 1, "customer_rif": 1}):
         name = str(sale.get("customer_name", "")).strip()
         if name:
@@ -67,7 +61,6 @@ async def ensure_data_foundation():
                 upsert=True,
             )
 
-    # Idempotently create supplier purchase events for historical purchases.
     async for purchase in db.purchases.find({"business_id": {"$exists": True}, "supplier": {"$nin": [None, ""]}}, {"id": 1, "business_id": 1, "supplier": 1, "supplier_rif": 1, "created_at": 1, "total": 1, "items": 1, "status": 1}):
         supplier = await _ensure_supplier_doc(purchase["business_id"], purchase.get("supplier"), purchase.get("supplier_rif"))
         if supplier:
