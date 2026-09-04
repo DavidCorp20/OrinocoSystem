@@ -65,6 +65,13 @@ async def calculate_cash_flow(business_id: str, start: datetime, end: datetime) 
     return {"cash_in": cash_in, "cash_out": cash_out, "net_cash_flow": _money(cash_in - cash_out)}
 
 
+async def calculate_cash_balance(business_id: str) -> float:
+    pipeline = [{"$match": {"business_id": business_id}}, {"$group": {"_id": "$direction", "total": {"$sum": {"$ifNull": ["$amount", 0]}}}}]
+    rows = await db.cash_movements.aggregate(pipeline).to_list(10)
+    totals = {r.get("_id"): float(r.get("total", 0) or 0) for r in rows}
+    return _money(totals.get("in", 0) - totals.get("out", 0))
+
+
 async def calculate_receivables(business_id: str) -> float:
     pipeline = [{"$match": {"business_id": business_id, "kind": "por_cobrar", "status": {"$ne": "cancelada"}}}, {"$group": {"_id": None, "total": {"$sum": {"$ifNull": ["$remaining_amount", {"$ifNull": ["$outstanding_amount", 0]}]}}}}]
     rows = await db.obligations.aggregate(pipeline).to_list(1)
@@ -98,10 +105,11 @@ async def calculate_financial_snapshot(business_id: str, start: datetime, end: d
     expenses = await calculate_operating_expenses(business_id, start, end)
     operating_profit = _money(gross_profit - expenses)
     cash = await calculate_cash_flow(business_id, start, end)
+    cash_balance = await calculate_cash_balance(business_id)
     receivables = await calculate_receivables(business_id)
     payables = await calculate_payables(business_id)
     inventory = await calculate_inventory_value(business_id)
-    working_capital = _money(cash["cash_in"] - cash["cash_out"] + receivables + inventory["inventory_value"] - payables)
+    working_capital = _money(cash_balance + receivables + inventory["inventory_value"] - payables)
 
     sales = await db.sales.find({"business_id": business_id}, {"_id": 0}).to_list(50000)
     expenses_docs = await db.expenses.find({"business_id": business_id}, {"_id": 0}).to_list(50000)
@@ -118,6 +126,7 @@ async def calculate_financial_snapshot(business_id: str, start: datetime, end: d
         "operating_profit": operating_profit,
         "operating_margin": round(operating_profit / revenue * 100, 2) if revenue else 0,
         **cash,
+        "cash_balance": cash_balance,
         "receivables": receivables,
         "payables": payables,
         "inventory_value": inventory["inventory_value"],
