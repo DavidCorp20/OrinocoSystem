@@ -3,6 +3,7 @@ import os
 from database import db
 from security import now_iso
 from data_foundation import ensure_data_foundation
+from ledger_migration import backfill_cash_ledger
 
 
 async def ensure_managed_accounts_approved():
@@ -33,5 +34,5 @@ async def ensure_managed_accounts_approved():
             }},
         )
 
-    # Fase 1: indexes, canonical entities and idempotent historical backfill.
     await ensure_data_foundation()
+    await backfill_cash_ledger()
