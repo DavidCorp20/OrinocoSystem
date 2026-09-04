@@ -20,6 +20,7 @@ from routes_expenses import router as expenses_router
 from routes_finance_export import router as finance_export_router
 from routes_financial_engine import router as financial_engine_router
 from routes_financial_insights import router as financial_insights_router
+from routes_intelligence import router as intelligence_router
 from routes_inventory import router as inventory_router
 from routes_platform import router as platform_router
 from routes_subscription import router as subscription_router
@@ -58,7 +59,8 @@ async def healthz():
 for r in (
     auth_router, business_router, products_router, inventory_router, sales_router,
     purchases_router, expenses_router, finance_export_router, dashboard_router,
-    financial_engine_router, financial_insights_router, assistant_router, ai_router, rates_router, platform_router, subscription_router,
+    financial_engine_router, financial_insights_router, intelligence_router,
+    assistant_router, ai_router, rates_router, platform_router, subscription_router,
     reports_router, obligations_router, recipes_router, promotions_router,
     cash_closure_router, cubi_router, import_export_router,
 ):
@@ -79,128 +81,36 @@ frontend_origins = {
     normalize_origin(settings.FRONTEND_URL) if settings.FRONTEND_URL else "",
     "https://platia.up.railway.app",
     "https://cuadrapp.up.railway.app",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:3001",
-    "http://127.0.0.1:3001",
-    *env_origins,
 }
-frontend_origins = list(dict.fromkeys(o for o in frontend_origins if o))
-
-if settings.APP_ENV == "production":
-    if not settings.COOKIE_SECURE:
-        raise RuntimeError("COOKIE_SECURE debe estar habilitado en production")
-    if settings.COOKIE_SAMESITE not in {"lax", "strict", "none"}:
-        raise RuntimeError("COOKIE_SAMESITE inválido; usa lax, strict o none")
-    if not settings.FRONTEND_URL or settings.FRONTEND_URL.startswith("http://localhost"):
-        raise RuntimeError("FRONTEND_URL debe apuntar al frontend real en production")
-    if "*" in frontend_origins:
-        raise RuntimeError("CORS no puede usar '*' en production")
-
-
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
-        response.headers["Cross-Origin-Resource-Policy"] = "same-site"
-        if settings.APP_ENV == "production":
-            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        return response
-
-
-class AuthRateLimitMiddleware(BaseHTTPMiddleware):
-    """Small process-local abuse guard for public authentication endpoints.
-
-    Database login lockout remains the durable control; this adds an IP-based
-    layer so a single client cannot cheaply hammer auth endpoints.
-    """
-
-    def __init__(self, app):
-        super().__init__(app)
-        self.events = defaultdict(deque)
-        self.limits = {
-            "/api/auth/login": (30, 60),
-            "/api/auth/register": (10, 3600),
-            "/api/auth/refresh": (30, 60),
-        }
-
-    async def dispatch(self, request: Request, call_next):
-        limit = self.limits.get(request.url.path)
-        if limit and request.method == "POST":
-            now = time.monotonic()
-            key = f"{request.client.host if request.client else 'unknown'}:{request.url.path}"
-            bucket = self.events[key]
-            window_count, window_seconds = limit
-            while bucket and now - bucket[0] >= window_seconds:
-                bucket.popleft()
-            if len(bucket) >= window_count:
-                return JSONResponse(
-                    status_code=429,
-                    content={"detail": "Demasiadas solicitudes. Intenta nuevamente más tarde."},
-                    headers={"Retry-After": str(window_seconds)},
-                )
-            bucket.append(now)
-        return await call_next(request)
-
+allow_origins = [o for o in dict.fromkeys(env_origins + list(frontend_origins)) if o]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=frontend_origins,
+    allow_origins=allow_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Accept", "Authorization", "Content-Type", "X-Requested-With"],
-    max_age=600,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
-app.add_middleware(AuthRateLimitMiddleware)
-app.add_middleware(SecurityHeadersMiddleware)
-
-PLAN_PATHS = {
-    "/finance": "finance", "/finances": "finance", "/finanzas": "finance",
-    "/financial-engine": "finance", "/financial-insights": "finance",
-    "/obligations": "obligations", "/reports": "reports_advanced",
-    "/projections": "projections", "/projection": "projections",
-    "/promotions": "promotions", "/recipes": "recipes",
-    "/cash-closure": "cash_closure", "/cash-closures": "cash_closure",
-    "/exports": "exports", "/templates": "exports",
-    "/ai/margin-analysis": "advanced_analytics",
-}
 
 
-class PlanAccessMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        if request.method == "OPTIONS":
-            return await call_next(request)
-        path = request.url.path
-        if path.startswith("/api/assistant/chat"):
-            from security import get_current_user
-            from plan_access import require_cubi_chat
-            try:
-                user = await get_current_user(request)
-                if user.get("platform_role") != "superadmin" and user.get("business_id"):
-                    await require_cubi_chat(user["business_id"])
-            except Exception as exc:
-                from fastapi import HTTPException
-                if isinstance(exc, HTTPException):
-                    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
-                raise
-        feature = next((f for suffix, f in PLAN_PATHS.items() if path.startswith("/api" + suffix)), None)
-        if feature:
-            from security import get_current_user
-            from plan_access import require_feature
-            try:
-                user = await get_current_user(request)
-                if user.get("platform_role") != "superadmin" and user.get("business_id"):
-                    await require_feature(user["business_id"], feature)
-            except Exception as exc:
-                from fastapi import HTTPException
-                if isinstance(exc, HTTPException):
-                    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
-                raise
-        return await call_next(request)
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
 
 
-app.add_middleware(PlanAccessMiddleware)
+@app.on_event("startup")
+async def startup_event():
+    await ensure_managed_accounts_approved()
+    await seed_all()
+    await seed_demo_account()
+    await upgrade_demo_catalog()
+    await seed_demo_product_images()
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    client.close()
