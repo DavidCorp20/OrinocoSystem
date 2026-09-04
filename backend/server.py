@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from collections import defaultdict, deque
 from datetime import datetime, timezone
@@ -39,6 +40,8 @@ from seed import seed_all
 from demo_seed import seed_demo_account
 from demo_catalog_upgrade import upgrade_demo_catalog
 from demo_product_images import seed_demo_product_images
+from demo_showcase_seed import seed_showcase
+from demo_showcase_patch import main as patch_demo_showcase
 from plan_access import DEFAULT_ENTITLEMENTS
 
 app = FastAPI(title="PLATIA API")
@@ -109,6 +112,29 @@ async def startup_event():
     await seed_demo_account()
     await upgrade_demo_catalog()
     await seed_demo_product_images()
+
+    # Public PLATIA showcase bootstrap. It uses the exact same MongoDB
+    # connection as the running API, so it cannot silently seed another DB.
+    demo_enabled = os.getenv("DEMO_SEED_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+    logging.info("[PLATIA] MongoDB startup: DB_NAME=%s DEMO_SEED_ENABLED=%s", settings.DB_NAME, demo_enabled)
+    if demo_enabled:
+        logging.info("[PLATIA] Demo showcase bootstrap starting in DB=%s", settings.DB_NAME)
+        await db.command("ping")
+        await seed_showcase()
+        await patch_demo_showcase()
+
+        demo_emails = [
+            "cafe.demo@platia.app",
+            "barber.demo@platia.app",
+            "moda.demo@platia.app",
+        ]
+        found = await db.users.count_documents({"email": {"$in": demo_emails}})
+        logging.info("[PLATIA] Demo users verified: %s/%s", found, len(demo_emails))
+        if found != len(demo_emails):
+            raise RuntimeError(
+                f"PLATIA demo bootstrap incomplete: found {found}/{len(demo_emails)} demo users in DB '{settings.DB_NAME}'"
+            )
+        logging.info("[PLATIA] Demo showcase bootstrap completed successfully")
 
 
 @app.on_event("shutdown")
