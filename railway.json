@@ -5,7 +5,7 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "startCommand": "/bin/sh -c 'if [ \"$DEMO_SEED_ENABLED\" = \"true\" ]; then echo \"[PLATIA] Demo bootstrap enabled\"; python demo_showcase_seed.py; python demo_showcase_patch.py; else echo \"[PLATIA] Production mode: demo bootstrap disabled\"; fi; exec uvicorn server:app --host 0.0.0.0 --port $PORT --log-level info'",
+    "startCommand": "/bin/sh -c 'set -e; echo \"[PLATIA] APP_ENV=$APP_ENV DB_NAME=$DB_NAME DEMO_SEED_ENABLED=$DEMO_SEED_ENABLED\"; if [ \"$DEMO_SEED_ENABLED\" = \"true\" ]; then echo \"[PLATIA] Demo bootstrap enabled - seeding controlpyme\"; python demo_showcase_seed.py; python demo_showcase_patch.py; echo \"[PLATIA] Demo bootstrap completed\"; else echo \"[PLATIA] Production mode: demo bootstrap disabled\"; fi; exec uvicorn server:app --host 0.0.0.0 --port $PORT --log-level info'",
     "healthcheckPath": "/api/",
     "healthcheckTimeout": 300
   }
