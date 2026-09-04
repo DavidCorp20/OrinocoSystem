@@ -25,6 +25,7 @@ from routes_risk import router as risk_router
 from routes_platia_score import router as platia_score_router
 from routes_inventory import router as inventory_router
 from routes_platform import router as platform_router
+from routes_platform_intelligence import router as platform_intelligence_router
 from routes_subscription import router as subscription_router
 from routes_products import router as products_router
 from routes_purchases import router as purchases_router
@@ -52,7 +53,7 @@ async def root(): return {"message": "PLATIA API"}
 async def healthz():
     await db.command("ping")
     return {"status": "ok"}
-for r in (auth_router, business_router, products_router, inventory_router, sales_router, purchases_router, expenses_router, finance_export_router, dashboard_router, financial_engine_router, financial_insights_router, intelligence_router, supplier_intelligence_router, risk_router, platia_score_router, assistant_router, ai_router, rates_router, platform_router, subscription_router, reports_router, obligations_router, recipes_router, promotions_router, cash_closure_router, cubi_router, import_export_router):
+for r in (auth_router, business_router, products_router, inventory_router, sales_router, purchases_router, expenses_router, finance_export_router, dashboard_router, financial_engine_router, financial_insights_router, intelligence_router, supplier_intelligence_router, risk_router, platia_score_router, assistant_router, ai_router, rates_router, platform_router, platform_intelligence_router, subscription_router, reports_router, obligations_router, recipes_router, promotions_router, cash_closure_router, cubi_router, import_export_router):
     api_router.include_router(r)
 app.include_router(api_router)
 def normalize_origin(v: str) -> str: return v.strip().rstrip("/")
