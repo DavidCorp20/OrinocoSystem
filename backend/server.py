@@ -23,6 +23,7 @@ from routes_financial_engine import router as financial_engine_router
 from routes_financial_insights import router as financial_insights_router
 from routes_intelligence import router as intelligence_router
 from routes_supplier_intelligence import router as supplier_intelligence_router
+from routes_risk import router as risk_router
 from routes_inventory import router as inventory_router
 from routes_platform import router as platform_router
 from routes_subscription import router as subscription_router
@@ -49,20 +50,18 @@ app = FastAPI(title="PLATIA API")
 api_router = APIRouter(prefix="/api")
 
 @api_router.get("/")
-async def root():
-    return {"message": "PLATIA API"}
+async def root(): return {"message": "PLATIA API"}
 
 @api_router.get("/healthz")
 async def healthz():
     await db.command("ping")
     return {"status": "ok"}
 
-for r in (auth_router, business_router, products_router, inventory_router, sales_router, purchases_router, expenses_router, finance_export_router, dashboard_router, financial_engine_router, financial_insights_router, intelligence_router, supplier_intelligence_router, assistant_router, ai_router, rates_router, platform_router, subscription_router, reports_router, obligations_router, recipes_router, promotions_router, cash_closure_router, cubi_router, import_export_router):
+for r in (auth_router, business_router, products_router, inventory_router, sales_router, purchases_router, expenses_router, finance_export_router, dashboard_router, financial_engine_router, financial_insights_router, intelligence_router, supplier_intelligence_router, risk_router, assistant_router, ai_router, rates_router, platform_router, subscription_router, reports_router, obligations_router, recipes_router, promotions_router, cash_closure_router, cubi_router, import_export_router):
     api_router.include_router(r)
 app.include_router(api_router)
 
-def normalize_origin(v: str) -> str:
-    return v.strip().rstrip("/")
+def normalize_origin(v: str) -> str: return v.strip().rstrip("/")
 
 env_origins = [normalize_origin(o) for o in (settings.CORS_ORIGINS.split(",") if settings.CORS_ORIGINS else []) if o.strip()]
 frontend_origins = {normalize_origin(settings.FRONTEND_URL) if settings.FRONTEND_URL else "", "https://platia.up.railway.app", "https://cuadrapp.up.railway.app"}
@@ -75,41 +74,26 @@ _rate_buckets = defaultdict(deque)
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        started = time.monotonic()
-        key = request.client.host if request.client else "unknown"
-        now = time.monotonic()
-        bucket = _rate_buckets[key]
+        started = time.monotonic(); key = request.client.host if request.client else "unknown"; now = time.monotonic(); bucket = _rate_buckets[key]
         while bucket and now - bucket[0] > RATE_LIMIT_WINDOW: bucket.popleft()
-        if len(bucket) >= RATE_LIMIT_MAX:
-            return JSONResponse(status_code=429, content={"detail": "Demasiadas solicitudes. Intenta nuevamente en un momento."})
+        if len(bucket) >= RATE_LIMIT_MAX: return JSONResponse(status_code=429, content={"detail": "Demasiadas solicitudes. Intenta nuevamente en un momento."})
         bucket.append(now)
-        try:
-            response = await call_next(request)
+        try: response = await call_next(request)
         except Exception:
             logging.exception("Unhandled request error: %s %s", request.method, request.url.path)
             return JSONResponse(status_code=500, content={"detail": "Error interno del servidor"})
         response.headers["X-Process-Time"] = f"{time.monotonic() - started:.4f}"
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["X-Content-Type-Options"] = "nosniff"; response.headers["X-Frame-Options"] = "DENY"; response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         return response
 
 app.add_middleware(RequestContextMiddleware)
 
 @app.on_event("startup")
 async def startup_event():
-    await db.command("ping")
-    await ensure_managed_accounts_approved()
+    await db.command("ping"); await ensure_managed_accounts_approved()
     try:
-        await seed_all()
-        await seed_demo_account()
-        await upgrade_demo_catalog()
-        await seed_demo_product_images()
-        await seed_showcase()
-        await patch_demo_showcase()
-    except Exception:
-        logging.exception("Optional seed process failed")
+        await seed_all(); await seed_demo_account(); await upgrade_demo_catalog(); await seed_demo_product_images(); await seed_showcase(); await patch_demo_showcase()
+    except Exception: logging.exception("Optional seed process failed")
 
 @app.on_event("shutdown")
-async def shutdown_event():
-    client.close()
+async def shutdown_event(): client.close()
