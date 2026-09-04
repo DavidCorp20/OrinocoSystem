@@ -8,9 +8,11 @@ async def main():
         user=await db.users.find_one({"email":email})
         if not user or not user.get("business_id"): continue
         bid=user["business_id"]
-        if name=="Café Aroma Caracas":
+        business=await db.businesses.find_one({"id":bid},{"_id":0,"demo_expenses_finalized":1})
+        if name=="Café Aroma Caracas" and not business.get("demo_expenses_finalized"):
             async for e in db.expenses.find({"business_id":bid}):
                 await db.expenses.update_one({"id":e["id"]},{"$set":{"amount":round(float(e.get("amount",0))*0.55,2)}})
+            await db.businesses.update_one({"id":bid},{"$set":{"demo_expenses_finalized":True}})
         if pro:
             sub=await db.platform_subscriptions.find_one({"business_id":bid,"status":"activo"})
             if not sub:
