@@ -19,6 +19,7 @@ from routes_dashboard import router as dashboard_router
 from routes_expenses import router as expenses_router
 from routes_finance_export import router as finance_export_router
 from routes_financial_engine import router as financial_engine_router
+from routes_financial_insights import router as financial_insights_router
 from routes_inventory import router as inventory_router
 from routes_platform import router as platform_router
 from routes_subscription import router as subscription_router
@@ -57,7 +58,7 @@ async def healthz():
 for r in (
     auth_router, business_router, products_router, inventory_router, sales_router,
     purchases_router, expenses_router, finance_export_router, dashboard_router,
-    financial_engine_router, assistant_router, ai_router, rates_router, platform_router, subscription_router,
+    financial_engine_router, financial_insights_router, assistant_router, ai_router, rates_router, platform_router, subscription_router,
     reports_router, obligations_router, recipes_router, promotions_router,
     cash_closure_router, cubi_router, import_export_router,
 ):
@@ -159,7 +160,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 PLAN_PATHS = {
     "/finance": "finance", "/finances": "finance", "/finanzas": "finance",
-    "/financial-engine": "finance",
+    "/financial-engine": "finance", "/financial-insights": "finance",
     "/obligations": "obligations", "/reports": "reports_advanced",
     "/projections": "projections", "/projection": "projections",
     "/promotions": "promotions", "/recipes": "recipes",
