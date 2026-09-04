@@ -1,48 +1,155 @@
-import {useEffect,useMemo,useState} from "react";
-import {Activity,AlertTriangle,BarChart3,Boxes,Building2,CalendarDays,ChevronRight,CircleDollarSign,Database,Package,RefreshCw,ShoppingCart,Truck,TrendingDown,TrendingUp,Wallet} from "lucide-react";
-import {toast} from "sonner";
-import {useLocation,useNavigate} from "react-router-dom";
-import api,{apiError} from "../lib/api";
-import {fmtDate,fmtMoney,fmtNum} from "../lib/format";
-import {Button} from "../components/ui/button";
-import {Select,SelectContent,SelectItem,SelectTrigger,SelectValue} from "../components/ui/select";
+import { useEffect, useMemo, useState } from "react";
+import { Activity, AlertTriangle, BarChart3, Boxes, Building2, ChevronRight, CircleDollarSign, Database, Package, RefreshCw, ShoppingCart, Truck, TrendingDown, TrendingUp, Wallet } from "lucide-react";
+import { toast } from "sonner";
+import { useLocation, useNavigate } from "react-router-dom";
+import { BarChart, Bar, CartesianGrid, Cell, PieChart, Pie, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import api, { apiError } from "../lib/api";
+import { fmtDate, fmtMoney, fmtNum } from "../lib/format";
+import { Button } from "../components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 
-const money=v=>fmtMoney(v||0,"USD");
-const scoreLabel=v=>v>=800?"Excelente":v>=700?"Bueno":v>=600?"Moderado":v>=500?"Elevado":"Alto";
-const moduleByPath=p=>p.includes("/proveedores")?"proveedores":p.includes("/benchmarks")?"benchmarks":p.includes("/financiera")?"financiera":p.includes("/data")?"data":p.includes("/negocios")?"negocios":"resumen";
+const money = (v) => fmtMoney(Number(v || 0), "USD");
+const scoreLabel = (v) => v >= 800 ? "Excelente" : v >= 700 ? "Bueno" : v >= 600 ? "Moderado" : v >= 500 ? "Elevado" : "Alto";
+const moduleByPath = (p) => p.includes("/proveedores") ? "proveedores" : p.includes("/benchmarks") ? "benchmarks" : p.includes("/financiera") ? "financiera" : p.includes("/data") ? "data" : p.includes("/negocios") ? "negocios" : "resumen";
 
-function Metric({label,value,icon:Icon,sub}){return <div className="bg-card border rounded-2xl p-4"><div className="flex items-center justify-between"><p className="text-xs text-muted-foreground">{label}</p><Icon className="w-4 h-4 text-muted-foreground"/></div><p className="text-2xl font-extrabold mt-2">{value}</p>{sub&&<p className="text-xs text-muted-foreground mt-1">{sub}</p>}</div>}
-function ScoreBadge({score}){return <div className="flex items-center gap-2"><span className="font-extrabold">{fmtNum(score||0)}</span><span className="text-xs px-2 py-1 rounded-full bg-secondary">{scoreLabel(score||0)}</span></div>}
+function Metric({ label, value, icon: Icon, sub }) {
+  return <div className="min-w-0 bg-card border rounded-2xl p-4 shadow-sm overflow-hidden">
+    <div className="flex items-center justify-between gap-2"><p className="text-xs font-medium text-muted-foreground truncate">{label}</p>{Icon && <Icon className="w-4 h-4 shrink-0 text-muted-foreground" />}</div>
+    <p className="text-xl sm:text-2xl font-extrabold tracking-tight mt-2 truncate" title={String(value)}>{value}</p>
+    {sub && <p className="text-xs text-muted-foreground mt-1 truncate">{sub}</p>}
+  </div>;
+}
 
-export default function InteligenciaPlataforma(){
- const location=useLocation(); const navigate=useNavigate();
- const [days,setDays]=useState("90"); const [data,setData]=useState(null); const [loading,setLoading]=useState(false); const [selected,setSelected]=useState(null);
- const tab=moduleByPath(location.pathname);
- const load=async()=>{setLoading(true);try{const r=await api.get(`/platform/intelligence?days=${Number(days)}`);setData(r.data);if(selected){const next=(r.data.businesses||[]).find(x=>x.id===selected.id);setSelected(next||null)}}catch(e){toast.error(apiError(e))}finally{setLoading(false)}};
- useEffect(()=>{load()},[days]);
- const businesses=useMemo(()=>data?.businesses||[],[data]);
- const bands=useMemo(()=>({excelente:businesses.filter(x=>x.score>=800).length,bueno:businesses.filter(x=>x.score>=700&&x.score<800).length,moderado:businesses.filter(x=>x.score>=600&&x.score<700).length,elevado:businesses.filter(x=>x.score>=500&&x.score<600).length,alto:businesses.filter(x=>x.score<500).length}),[businesses]);
- const dataQuality=useMemo(()=>{const q=businesses.reduce((a,b)=>{a.missingCosts+=(b.data_quality?.missing_sale_costs||0);a.missingDates+=(b.data_quality?.missing_date_records||0);a.missingProducts+=(b.data_quality?.missing_inventory_cost_products||0);return a},{missingCosts:0,missingDates:0,missingProducts:0});return q},[businesses]);
- if(!data)return <div className="p-8 text-sm text-muted-foreground">Cargando inteligencia de negocios…</div>;
- const s=data.summary;
- const go=v=>navigate(v==="resumen"?"/inteligencia":`/inteligencia/${v}`);
- return <div className="space-y-5" data-testid="platform-intelligence-page">
-  <div className="flex items-center justify-between flex-wrap gap-3"><div><h1 className="font-heading text-3xl font-extrabold flex items-center gap-2"><BarChart3 className="w-7 h-7 text-primary"/>Inteligencia</h1><p className="text-sm text-muted-foreground">Centro de inteligencia de PLATIA: negocios, proveedores, benchmarks, riesgo y datos.</p></div><div className="flex items-center gap-2"><Select value={days} onValueChange={setDays}><SelectTrigger className="w-28"><SelectValue/></SelectTrigger><SelectContent>{[30,60,90,180,365].map(v=><SelectItem key={v} value={String(v)}>{v} días</SelectItem>)}</SelectContent></Select><Button variant="outline" onClick={load} disabled={loading}><RefreshCw className={`w-4 h-4 mr-2 ${loading?'animate-spin':''}`}/>Actualizar</Button></div></div>
-  <div className="flex gap-1 p-1 bg-secondary rounded-xl w-fit flex-wrap">{[["resumen","Resumen"],["negocios","Negocios"],["proveedores","Proveedores"],["benchmarks","Benchmarks"],["financiera","Financial Intelligence"],["data","Data / Analytics"]].map(([id,label])=><button key={id} onClick={()=>go(id)} className={`px-4 py-2 rounded-lg text-sm ${tab===id?'bg-background shadow-sm font-semibold':''}`}>{label}</button>)}</div>
-  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3"><Metric label="Negocios" value={fmtNum(s.businesses)} icon={Building2}/><Metric label="Activos" value={fmtNum(s.active_businesses)} icon={Activity}/><Metric label="Ventas" value={money(s.sales)} icon={CircleDollarSign}/><Metric label="Utilidad operativa" value={money(s.operating_profit)} icon={TrendingUp} sub={`${s.operating_margin||0}% margen`}/><Metric label="Compras" value={money(s.purchases)} icon={Truck}/><Metric label="Gastos" value={money(s.operating_expenses)} icon={Wallet}/><Metric label="Inventario" value={money(s.inventory)} icon={Boxes}/><Metric label="Score promedio" value={fmtNum(s.average_score)} icon={BarChart3} sub={`${s.scored_businesses} evaluados`}/></div>
+function Section({ title, description, children, className = "" }) {
+  return <section className={`bg-card border rounded-2xl shadow-sm overflow-hidden ${className}`}>
+    <div className="px-5 py-4 border-b"><h2 className="font-heading font-bold text-base">{title}</h2>{description && <p className="text-xs text-muted-foreground mt-1">{description}</p>}</div>
+    <div className="p-5">{children}</div>
+  </section>;
+}
 
-  {tab==="resumen"&&<div className="grid md:grid-cols-3 gap-4"><div className="bg-card border rounded-2xl p-5"><h3 className="font-heading font-bold">Portafolio</h3><p className="text-sm text-muted-foreground mt-1">Visión general de los negocios administrados por PLATIA.</p><Button className="mt-4" onClick={()=>go("negocios")}>Ver negocios</Button></div><div className="bg-card border rounded-2xl p-5"><h3 className="font-heading font-bold">Supplier Intelligence</h3><p className="text-sm text-muted-foreground mt-1">Compras, concentración y actividad de proveedores.</p><Button variant="outline" className="mt-4" onClick={()=>go("proveedores")}>Ver proveedores</Button></div><div className="bg-card border rounded-2xl p-5"><h3 className="font-heading font-bold">Financial Intelligence</h3><p className="text-sm text-muted-foreground mt-1">Segmentación del portafolio por salud y riesgo.</p><Button variant="outline" className="mt-4" onClick={()=>go("financiera")}>Abrir inteligencia</Button></div></div>}
+function ChartBox({ children, height = 280 }) {
+  return <div style={{ height }} className="w-full min-w-0">{children}</div>;
+}
 
-  {tab==="negocios"&&<><div className="bg-card border rounded-2xl overflow-hidden"><div className="px-5 py-4 border-b"><h3 className="font-heading font-bold">Portafolio de negocios</h3><p className="text-xs text-muted-foreground mt-1">Selecciona un negocio para abrir su ficha financiera y de riesgo.</p></div><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left text-xs uppercase text-muted-foreground bg-secondary/50"><th className="px-5 py-3">Negocio</th><th>Score</th><th>Ventas</th><th>Utilidad</th><th>Margen</th><th>Compras</th><th>Inventario</th><th>Caja</th><th></th></tr></thead><tbody className="divide-y">{businesses.map(b=><tr key={b.id} className={`cursor-pointer hover:bg-secondary/40 ${selected?.id===b.id?'bg-secondary/30':''}`} onClick={()=>setSelected(b)}><td className="px-5 py-3"><b>{b.name}</b><div className="text-xs text-muted-foreground">{b.owner_email} · {b.active?'Activo':'Inactivo'}</div></td><td><ScoreBadge score={b.score}/></td><td>{money(b.sales)}</td><td className={b.operating_profit<0?'text-red-600 font-semibold':'font-semibold'}>{money(b.operating_profit)}</td><td>{b.operating_margin}%</td><td>{money(b.purchase_amount)}</td><td>{money(b.inventory_value)}</td><td>{money(b.cash_balance)}</td><td><ChevronRight className="w-4 h-4 text-muted-foreground"/></td></tr>)}</tbody></table></div></div>
-   {selected&&<div className="bg-card border rounded-2xl p-5 space-y-5"><div className="flex items-start justify-between gap-3"><div><p className="text-xs uppercase tracking-wider text-muted-foreground">Ficha del negocio</p><h2 className="font-heading text-2xl font-extrabold mt-1">{selected.name}</h2><p className="text-sm text-muted-foreground">{selected.owner_name} · {selected.owner_email}</p></div><div className="text-right"><p className="text-xs text-muted-foreground">PLATIA Score</p><p className="text-4xl font-extrabold">{fmtNum(selected.score)}<span className="text-base text-muted-foreground">/1000</span></p><p className="text-xs capitalize">{selected.score_band}</p></div></div><div className="grid grid-cols-2 md:grid-cols-4 gap-3"><Metric label="Ventas" value={money(selected.sales)} icon={ShoppingCart} sub={`${fmtNum(selected.sales_count)} ventas`}/><Metric label="Ticket promedio" value={money(selected.average_ticket)} icon={CircleDollarSign}/><Metric label="Costo de ventas" value={money(selected.cogs)} icon={Package}/><Metric label="Utilidad bruta" value={money(selected.gross_profit)} icon={TrendingUp} sub={`${selected.gross_margin}% margen`}/><Metric label="Gastos operativos" value={money(selected.operating_expenses)} icon={Wallet}/><Metric label="Compras" value={money(selected.purchase_amount)} icon={Truck} sub={`${fmtNum(selected.purchases_count)} compras`}/><Metric label="Cuentas por cobrar" value={money(selected.receivables)} icon={CircleDollarSign}/><Metric label="Cuentas por pagar" value={money(selected.payables)} icon={Wallet}/><Metric label="Inventario" value={money(selected.inventory_value)} icon={Boxes}/><Metric label="Capital de trabajo" value={money(selected.working_capital)} icon={TrendingUp}/><Metric label="Flujo de caja" value={money(selected.cash_flow)} icon={selected.cash_flow<0?TrendingDown:TrendingUp}/><Metric label="Productos" value={fmtNum(selected.products_count)} icon={Package}/></div><div className="grid md:grid-cols-2 gap-4"><div className="border rounded-2xl p-4"><h3 className="font-bold mb-3">Componentes del Score</h3>{(selected.score_components||[]).map(c=><div key={c.name} className="mb-3"><div className="flex justify-between text-sm"><span>{c.name}</span><b>{c.score}</b></div><div className="h-2 bg-secondary rounded-full mt-1"><div className="h-full bg-primary rounded-full" style={{width:`${Math.max(0,Math.min(100,c.score/10))}%`}}/></div><p className="text-xs text-muted-foreground mt-1">Peso {c.weight}%</p></div>)}</div><div className="border rounded-2xl p-4"><h3 className="font-bold flex items-center gap-2 mb-3"><AlertTriangle className="w-4 h-4"/>Alertas</h3>{(selected.score_alerts||[]).length?<ul className="space-y-2 text-sm">{selected.score_alerts.map(x=><li key={x}>• {x}</li>)}</ul>:<p className="text-sm text-muted-foreground">Sin alertas de riesgo registradas.</p>}</div></div><div className="grid md:grid-cols-2 gap-4"><div className="border rounded-2xl p-4"><h3 className="font-bold mb-2">Calidad de datos</h3><p className="text-sm text-muted-foreground">Costos de venta faltantes: <b>{selected.data_quality?.missing_sale_costs||0}</b></p><p className="text-sm text-muted-foreground">Registros sin fecha: <b>{selected.data_quality?.missing_date_records||0}</b></p><p className="text-sm text-muted-foreground">Productos sin costo: <b>{selected.data_quality?.missing_inventory_cost_products||0}</b></p></div><div className="border rounded-2xl p-4"><h3 className="font-bold mb-2">Acciones sugeridas</h3>{(selected.score_actions||[]).length?<ul className="space-y-2 text-sm">{selected.score_actions.map(x=><li key={x}>• {x}</li>)}</ul>:<p className="text-sm text-muted-foreground">No hay acciones específicas.</p>}</div></div></div>}
-  </>}
+function EmptyChart({ text }) {
+  return <div className="h-full flex items-center justify-center text-sm text-muted-foreground border border-dashed rounded-xl">{text}</div>;
+}
 
-  {tab==="proveedores"&&<div className="space-y-4"><div className="bg-card border rounded-2xl overflow-hidden"><div className="px-5 py-4 border-b"><h3 className="font-heading font-bold">Supplier Intelligence</h3><p className="text-xs text-muted-foreground mt-1">Compras registradas por proveedor durante los últimos {days} días.</p></div><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left text-xs uppercase text-muted-foreground bg-secondary/50"><th className="px-5 py-3">Proveedor</th><th>Negocio</th><th>Compras</th><th>Monto</th><th>% compras</th><th>Actividad</th><th>Última compra</th></tr></thead><tbody className="divide-y">{(data.suppliers||[]).map(x=><tr key={`${x.business_id}-${x.supplier_id}`}><td className="px-5 py-3"><b>{x.name}</b>{x.rif&&<div className="text-xs text-muted-foreground">{x.rif}</div>}</td><td>{x.business_name}</td><td>{fmtNum(x.purchases)}</td><td className="font-semibold">{money(x.purchase_amount)}</td><td>{x.purchase_share_pct}%</td><td><span className="text-xs px-2 py-1 rounded-full bg-secondary">{x.activity_score}/100</span></td><td>{x.last_purchase?fmtDate(x.last_purchase):'—'}</td></tr>)}</tbody></table>{!(data.suppliers||[]).length&&<div className="p-8 text-center text-sm text-muted-foreground"><Truck className="w-8 h-8 mx-auto mb-2"/>Aún no hay compras con proveedor registradas.</div>}</div></div></div>}
+function ScoreBadge({ score }) {
+  const value = Number(score || 0);
+  return <div className="flex items-center gap-2 whitespace-nowrap"><span className="font-extrabold">{fmtNum(value)}</span><span className="text-xs px-2 py-1 rounded-full bg-secondary">{scoreLabel(value)}</span></div>;
+}
 
-  {tab==="benchmarks"&&<div className="grid md:grid-cols-2 gap-4"><div className="bg-card border rounded-2xl p-5"><h3 className="font-heading font-bold">Benchmark del portafolio</h3><p className="text-sm text-muted-foreground mt-1">Comparación interna de los negocios disponibles en PLATIA durante {days} días.</p><div className="grid grid-cols-2 gap-3 mt-4"><Metric label="Score promedio" value={fmtNum(s.average_score)} icon={BarChart3}/><Metric label="Margen operativo" value={`${s.operating_margin||0}%`} icon={TrendingUp}/><Metric label="Ventas totales" value={money(s.sales)} icon={CircleDollarSign}/><Metric label="Ticket no disponible global" value="—" icon={ShoppingCart}/></div></div><div className="bg-card border rounded-2xl p-5"><h3 className="font-heading font-bold">Mejores indicadores</h3>{businesses.slice().sort((a,b)=>(b.score||0)-(a.score||0)).slice(0,5).map((b,i)=><div key={b.id} className="flex items-center justify-between py-3 border-b last:border-0"><div><b>{i+1}. {b.name}</b><p className="text-xs text-muted-foreground">Margen {b.operating_margin}% · Ventas {money(b.sales)}</p></div><ScoreBadge score={b.score}/></div>)}</div></div>}
+export default function InteligenciaPlataforma() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [days, setDays] = useState("90");
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [selected, setSelected] = useState(null);
+  const tab = moduleByPath(location.pathname);
 
-  {tab==="financiera"&&<div className="space-y-4"><div className="grid grid-cols-2 md:grid-cols-5 gap-3"><Metric label="Excelente" value={bands.excelente} icon={TrendingUp}/><Metric label="Bueno" value={bands.bueno} icon={TrendingUp}/><Metric label="Moderado" value={bands.moderado} icon={BarChart3}/><Metric label="Elevado" value={bands.elevado} icon={AlertTriangle}/><Metric label="Alto" value={bands.alto} icon={TrendingDown}/></div><div className="bg-card border rounded-2xl p-5"><h3 className="font-heading font-bold">Financial Intelligence</h3><p className="text-sm text-muted-foreground mt-1">Segmentación actual del portafolio usando PLATIA Score, rentabilidad, liquidez y riesgo operativo.</p><div className="mt-4 space-y-3">{businesses.slice().sort((a,b)=>(a.score||0)-(b.score||0)).map(b=><div key={b.id} className="flex items-center justify-between border-b pb-3"><div><b>{b.name}</b><p className="text-xs text-muted-foreground">Margen {b.operating_margin}% · Flujo {money(b.cash_flow)} · Inventario {money(b.inventory_value)}</p></div><ScoreBadge score={b.score}/></div>)}</div></div></div>}
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await api.get(`/platform/intelligence?days=${Number(days)}`);
+      setData(r.data);
+      if (selected) setSelected((r.data.businesses || []).find(x => x.id === selected.id) || null);
+    } catch (e) {
+      toast.error(apiError(e));
+    } finally { setLoading(false); }
+  };
 
-  {tab==="data"&&<div className="grid md:grid-cols-2 gap-4"><div className="bg-card border rounded-2xl p-5"><h3 className="font-heading font-bold flex items-center gap-2"><Database className="w-5 h-5"/>Calidad de datos</h3><p className="text-sm text-muted-foreground mt-1">Indicadores de calidad de la información que alimenta los motores de PLATIA.</p><div className="grid grid-cols-3 gap-3 mt-5"><Metric label="Costos faltantes" value={fmtNum(dataQuality.missingCosts)} icon={Package}/><Metric label="Fechas faltantes" value={fmtNum(dataQuality.missingDates)} icon={CalendarDays}/><Metric label="Productos sin costo" value={fmtNum(dataQuality.missingProducts)} icon={Boxes}/></div></div><div className="bg-card border rounded-2xl p-5"><h3 className="font-heading font-bold">Cobertura analítica</h3><p className="text-sm text-muted-foreground mt-1">Métricas disponibles para el portafolio.</p><ul className="mt-4 space-y-2 text-sm"><li>✓ Ventas, costos y rentabilidad</li><li>✓ Compras e inventario</li><li>✓ Caja, cuentas por cobrar y pagar</li><li>✓ PLATIA Score y alertas</li><li>✓ Proveedores y concentración de compras</li></ul></div></div>}
- </div>;
+  useEffect(() => { load(); }, [days]);
+
+  const businesses = useMemo(() => data?.businesses || [], [data]);
+  const suppliers = useMemo(() => data?.suppliers || [], [data]);
+  const s = data?.summary || {};
+  const bands = useMemo(() => [
+    { name: "Excelente", value: businesses.filter(x => x.score >= 800).length },
+    { name: "Bueno", value: businesses.filter(x => x.score >= 700 && x.score < 800).length },
+    { name: "Moderado", value: businesses.filter(x => x.score >= 600 && x.score < 700).length },
+    { name: "Elevado", value: businesses.filter(x => x.score >= 500 && x.score < 600).length },
+    { name: "Alto", value: businesses.filter(x => x.score < 500).length }
+  ].filter(x => x.value > 0), [businesses]);
+  const topBusinesses = useMemo(() => businesses.slice().sort((a,b) => Number(b.sales || 0) - Number(a.sales || 0)).slice(0, 8), [businesses]);
+  const topSuppliers = useMemo(() => suppliers.slice().sort((a,b) => Number(b.purchase_amount || 0) - Number(a.purchase_amount || 0)).slice(0, 8), [suppliers]);
+  const quality = useMemo(() => businesses.reduce((a,b) => {
+    a.costs += Number(b.data_quality?.missing_sale_costs || 0); a.dates += Number(b.data_quality?.missing_date_records || 0); a.products += Number(b.data_quality?.missing_inventory_cost_products || 0); return a;
+  }, { costs: 0, dates: 0, products: 0 }), [businesses]);
+
+  if (!data) return <div className="p-8 text-sm text-muted-foreground">Cargando inteligencia de negocios…</div>;
+
+  const go = (v) => navigate(v === "resumen" ? "/inteligencia" : `/inteligencia/${v}`);
+  const chartTooltip = { contentStyle: { borderRadius: 12, border: "1px solid hsl(var(--border))", background: "hsl(var(--card))" } };
+
+  return <div className="space-y-6" data-testid="platform-intelligence-page">
+    <div className="flex items-start justify-between gap-4 flex-wrap">
+      <div className="min-w-0"><div className="flex items-center gap-2"><BarChart3 className="w-7 h-7 text-primary shrink-0"/><h1 className="font-heading text-3xl font-extrabold tracking-tight">Inteligencia</h1></div><p className="text-sm text-muted-foreground mt-1">El centro analítico de PLATIA para entender negocios, proveedores, riesgo y datos.</p></div>
+      <div className="flex items-center gap-2 shrink-0"><Select value={days} onValueChange={setDays}><SelectTrigger className="w-28"><SelectValue /></SelectTrigger><SelectContent>{[30,60,90,180,365].map(v => <SelectItem key={v} value={String(v)}>{v} días</SelectItem>)}</SelectContent></Select><Button variant="outline" onClick={load} disabled={loading}><RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />Actualizar</Button></div>
+    </div>
+
+    <div className="flex gap-1 p-1 bg-secondary/70 rounded-xl w-full overflow-x-auto">
+      {[["resumen","Resumen"],["negocios","Negocios"],["proveedores","Proveedores"],["benchmarks","Benchmarks"],["financiera","Financial Intelligence"],["data","Data / Analytics"]].map(([id,label]) => <button key={id} onClick={() => go(id)} className={`px-4 py-2 rounded-lg text-sm whitespace-nowrap transition ${tab === id ? "bg-background shadow-sm font-semibold" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>)}
+    </div>
+
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <Metric label="Negocios" value={fmtNum(s.businesses)} icon={Building2} sub={`${fmtNum(s.active_businesses)} activos`} />
+      <Metric label="Ventas" value={money(s.sales)} icon={CircleDollarSign} sub={`${fmtNum(s.sales_count || 0)} operaciones`} />
+      <Metric label="Utilidad operativa" value={money(s.operating_profit)} icon={Number(s.operating_profit || 0) < 0 ? TrendingDown : TrendingUp} sub={`${s.operating_margin || 0}% margen`} />
+      <Metric label="PLATIA Score promedio" value={fmtNum(s.average_score)} icon={BarChart3} sub={`${fmtNum(s.scored_businesses)} negocios evaluados`} />
+    </div>
+
+    {tab === "resumen" && <div className="grid grid-cols-1 xl:grid-cols-5 gap-5">
+      <Section title="Ventas por negocio" description={`Top ${topBusinesses.length} por ventas · últimos ${days} días`} className="xl:col-span-3">
+        {topBusinesses.length ? <ChartBox><ResponsiveContainer width="100%" height="100%"><BarChart data={topBusinesses} margin={{ top: 8, right: 8, left: 0, bottom: 30 }}><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="name" angle={-25} textAnchor="end" height={60} interval={0} tick={{fontSize:11}}/><YAxis tickFormatter={(v)=>`$${Number(v||0).toLocaleString("es-VE",{notation:"compact"})}`} tick={{fontSize:11}}/><Tooltip {...chartTooltip} formatter={(v)=>[money(v),"Ventas"]}/><Bar dataKey="sales" name="Ventas" radius={[6,6,0,0]}/></BarChart></ResponsiveContainer></ChartBox> : <EmptyChart text="No hay ventas suficientes para graficar."/>}
+      </Section>
+      <Section title="Distribución del Score" description="Cómo se reparte el portafolio por nivel de riesgo" className="xl:col-span-2">
+        {bands.length ? <ChartBox><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={bands} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={65} outerRadius={100} paddingAngle={3} label={({name,value})=>`${name}: ${value}`}><Cell/><Cell/><Cell/><Cell/><Cell/></Pie><Tooltip {...chartTooltip}/></PieChart></ResponsiveContainer></ChartBox> : <EmptyChart text="No hay scores disponibles."/>}
+      </Section>
+      <Section title="Lectura rápida" description="Principales magnitudes del período" className="xl:col-span-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Metric label="Compras" value={money(s.purchases)} icon={Truck}/><Metric label="Gastos operativos" value={money(s.operating_expenses)} icon={Wallet}/><Metric label="Inventario" value={money(s.inventory)} icon={Boxes}/><Metric label="Proveedores" value={fmtNum(s.suppliers)} icon={Truck}/>
+        </div>
+      </Section>
+    </div>}
+
+    {tab === "negocios" && <div className="space-y-5">
+      <Section title="Portafolio de negocios" description="Selecciona un negocio para abrir su ficha financiera y de riesgo.">
+        <div className="overflow-x-auto -mx-1"><table className="w-full text-sm min-w-[950px]"><thead><tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground bg-secondary/50"><th className="px-4 py-3">Negocio</th><th>Score</th><th>Ventas</th><th>Utilidad</th><th>Margen</th><th>Compras</th><th>Inventario</th><th>Caja</th><th></th></tr></thead><tbody className="divide-y">{businesses.map(b => <tr key={b.id} className={`cursor-pointer hover:bg-secondary/40 ${selected?.id === b.id ? "bg-secondary/30" : ""}`} onClick={() => setSelected(b)}><td className="px-4 py-3"><b>{b.name}</b><div className="text-xs text-muted-foreground">{b.owner_email} · {b.active ? "Activo" : "Inactivo"}</div></td><td><ScoreBadge score={b.score}/></td><td>{money(b.sales)}</td><td className={Number(b.operating_profit) < 0 ? "text-red-600 font-semibold" : "font-semibold"}>{money(b.operating_profit)}</td><td>{b.operating_margin}%</td><td>{money(b.purchase_amount)}</td><td>{money(b.inventory_value)}</td><td>{money(b.cash_balance)}</td><td><ChevronRight className="w-4 h-4 text-muted-foreground"/></td></tr>)}</tbody></table></div>
+      </Section>
+      {selected && <Section title={selected.name} description={`Ficha financiera y de riesgo · propietario: ${selected.owner_name || "—"}`}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-5"><Metric label="Ventas" value={money(selected.sales)} icon={ShoppingCart} sub={`${fmtNum(selected.sales_count)} ventas`}/><Metric label="Ticket promedio" value={money(selected.average_ticket)} icon={CircleDollarSign}/><Metric label="Utilidad bruta" value={money(selected.gross_profit)} icon={TrendingUp} sub={`${selected.gross_margin}% margen`}/><Metric label="Utilidad operativa" value={money(selected.operating_profit)} icon={Number(selected.operating_profit)<0?TrendingDown:TrendingUp} sub={`${selected.operating_margin}% margen`}/><Metric label="Compras" value={money(selected.purchase_amount)} icon={Truck} sub={`${fmtNum(selected.purchases_count)} compras`}/><Metric label="Inventario" value={money(selected.inventory_value)} icon={Boxes}/><Metric label="Capital de trabajo" value={money(selected.working_capital)} icon={TrendingUp}/><Metric label="Flujo de caja" value={money(selected.cash_flow)} icon={Number(selected.cash_flow)<0?TrendingDown:TrendingUp}/></div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5"><div className="border rounded-xl p-4"><h3 className="font-bold mb-4">PLATIA Score</h3><div className="flex items-end gap-2 mb-4"><span className="text-5xl font-extrabold tracking-tight">{fmtNum(selected.score)}</span><span className="text-sm text-muted-foreground mb-2">/1000 · {scoreLabel(selected.score)}</span></div>{(selected.score_components||[]).map(c => <div key={c.name} className="mb-4"><div className="flex justify-between text-sm mb-1"><span>{c.name}</span><b>{c.score}</b></div><div className="h-2 bg-secondary rounded-full overflow-hidden"><div className="h-full bg-primary rounded-full" style={{width:`${Math.max(0,Math.min(100,Number(c.score||0)/10))}%`}}/></div><p className="text-xs text-muted-foreground mt-1">Peso {c.weight}%</p></div>)}</div><div className="border rounded-xl p-4"><h3 className="font-bold flex items-center gap-2 mb-3"><AlertTriangle className="w-4 h-4"/>Alertas y acciones</h3>{(selected.score_alerts||[]).length ? <ul className="space-y-2 text-sm mb-5">{selected.score_alerts.map(x=><li key={x} className="rounded-lg bg-secondary/60 p-3">{x}</li>)}</ul> : <p className="text-sm text-muted-foreground mb-5">Sin alertas de riesgo.</p>}<h4 className="text-sm font-semibold mb-2">Acciones sugeridas</h4>{(selected.score_actions||[]).length ? <ul className="space-y-2 text-sm">{selected.score_actions.map(x=><li key={x} className="rounded-lg border p-3">{x}</li>)}</ul> : <p className="text-sm text-muted-foreground">No hay acciones específicas.</p>}</div></div>
+      </Section>}
+    </div>}
+
+    {tab === "proveedores" && <div className="space-y-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4"><Metric label="Proveedores" value={fmtNum(s.suppliers)} icon={Truck}/><Metric label="Compras" value={money(s.purchases)} icon={ShoppingCart}/><Metric label="Proveedor principal" value={topSuppliers[0]?.name || "—"} icon={Truck} sub={topSuppliers[0] ? money(topSuppliers[0].purchase_amount) : "Sin datos"}/><Metric label="Dependencia máxima" value={topSuppliers[0] ? `${topSuppliers[0].purchase_share_pct}%` : "—"} icon={BarChart3} sub="participación en compras"/></div>
+      <Section title="Concentración de proveedores" description={`Principales proveedores por monto comprado · últimos ${days} días`}>
+        {topSuppliers.length ? <ChartBox><ResponsiveContainer width="100%" height="100%"><BarChart data={topSuppliers} layout="vertical" margin={{top:5,right:20,left:100,bottom:5}}><CartesianGrid strokeDasharray="3 3" horizontal={false}/><XAxis type="number" tickFormatter={(v)=>`$${Number(v||0).toLocaleString("es-VE",{notation:"compact"})}`} tick={{fontSize:11}}/><YAxis type="category" dataKey="name" width={95} tick={{fontSize:11}}/><Tooltip {...chartTooltip} formatter={(v)=>[money(v),"Compras"]}/><Bar dataKey="purchase_amount" name="Compras" radius={[0,6,6,0]}/></BarChart></ResponsiveContainer></ChartBox> : <EmptyChart text="Aún no hay compras con proveedor registradas."/>}
+      </Section>
+      <Section title="Detalle de proveedores" description="Actividad, monto y concentración por negocio."><div className="overflow-x-auto"><table className="w-full text-sm min-w-[850px]"><thead><tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground bg-secondary/50"><th className="px-4 py-3">Proveedor</th><th>Negocio</th><th>Compras</th><th>Monto</th><th>% compras</th><th>Actividad</th><th>Última compra</th></tr></thead><tbody className="divide-y">{suppliers.map(x=><tr key={`${x.business_id}-${x.supplier_id}`}><td className="px-4 py-3"><b>{x.name}</b>{x.rif&&<div className="text-xs text-muted-foreground">{x.rif}</div>}</td><td>{x.business_name}</td><td>{fmtNum(x.purchases)}</td><td className="font-semibold">{money(x.purchase_amount)}</td><td>{x.purchase_share_pct}%</td><td><span className="text-xs px-2 py-1 rounded-full bg-secondary">{x.activity_score}/100</span></td><td>{x.last_purchase ? fmtDate(x.last_purchase) : "—"}</td></tr>)}</tbody></table></div>{!suppliers.length&&<div className="py-8 text-center text-sm text-muted-foreground">Aún no hay compras con proveedor registradas.</div>}</Section>
+    </div>}
+
+    {tab === "benchmarks" && <div className="space-y-5">
+      <Section title="Benchmark interno" description="Compara el portafolio de PLATIA usando los negocios disponibles, sin mezclar datos externos.">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-5"><Metric label="Score promedio" value={fmtNum(s.average_score)} icon={BarChart3}/><Metric label="Margen operativo" value={`${s.operating_margin || 0}%`} icon={TrendingUp}/><Metric label="Ventas totales" value={money(s.sales)} icon={CircleDollarSign}/><Metric label="Inventario" value={money(s.inventory)} icon={Boxes}/></div>
+        {topBusinesses.length ? <ChartBox height={330}><ResponsiveContainer width="100%" height="100%"><BarChart data={topBusinesses} margin={{top:10,right:10,left:0,bottom:35}}><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="name" angle={-25} textAnchor="end" height={70} interval={0} tick={{fontSize:11}}/><YAxis domain={[0,1000]} tick={{fontSize:11}}/><Tooltip {...chartTooltip} formatter={(v)=>[fmtNum(v),"Score"]}/><Bar dataKey="score" name="Score" radius={[6,6,0,0]}/></BarChart></ResponsiveContainer></ChartBox> : <EmptyChart text="No hay negocios evaluados."/>}
+      </Section>
+      <Section title="Ranking del portafolio" description="Ordenado por PLATIA Score."><div className="grid grid-cols-1 md:grid-cols-2 gap-x-8">{businesses.slice().sort((a,b)=>(b.score||0)-(a.score||0)).map((b,i)=><div key={b.id} className="flex items-center gap-3 py-3 border-b last:border-0"><span className="w-7 text-center text-sm font-bold text-muted-foreground">{i+1}</span><div className="flex-1 min-w-0"><p className="font-semibold truncate">{b.name}</p><p className="text-xs text-muted-foreground">Margen {b.operating_margin}% · Ventas {money(b.sales)}</p></div><ScoreBadge score={b.score}/></div>)}</div></Section>
+    </div>}
+
+    {tab === "financiera" && <div className="space-y-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4"><Metric label="Ventas" value={money(s.sales)} icon={CircleDollarSign}/><Metric label="Utilidad bruta" value={money(s.gross_profit)} icon={TrendingUp}/><Metric label="Utilidad operativa" value={money(s.operating_profit)} icon={Number(s.operating_profit)<0?TrendingDown:TrendingUp}/><Metric label="Margen operativo" value={`${s.operating_margin || 0}%`} icon={BarChart3}/></div>
+      <Section title="Estructura financiera del portafolio" description="Ventas, compras y gastos operativos durante el período seleccionado."><ChartBox height={330}><ResponsiveContainer width="100%" height="100%"><BarChart data={[{name:"Portafolio",ventas:Number(s.sales||0),compras:Number(s.purchases||0),gastos:Number(s.operating_expenses||0)}]} margin={{top:20,right:20,left:0,bottom:10}}><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="name"/><YAxis tickFormatter={(v)=>`$${Number(v||0).toLocaleString("es-VE",{notation:"compact"})}`}/><Tooltip {...chartTooltip} formatter={(v,n)=>[money(v),n]}/><Bar dataKey="ventas" name="Ventas" radius={[6,6,0,0]}/><Bar dataKey="compras" name="Compras" radius={[6,6,0,0]}/><Bar dataKey="gastos" name="Gastos" radius={[6,6,0,0]}/></BarChart></ResponsiveContainer></ChartBox></Section>
+      <Section title="Salud por negocio" description="Identifica rápidamente negocios con margen operativo positivo o negativo."><div className="space-y-3">{businesses.slice().sort((a,b)=>(b.operating_margin||0)-(a.operating_margin||0)).map(b=><div key={b.id} className="grid grid-cols-[minmax(0,1fr)_100px_90px] gap-3 items-center"><div className="min-w-0"><p className="font-semibold truncate">{b.name}</p><div className="h-2 bg-secondary rounded-full mt-2 overflow-hidden"><div className="h-full bg-primary rounded-full" style={{width:`${Math.max(0,Math.min(100,Number(b.operating_margin||0)+50))}%`}}/></div></div><span className="text-sm text-right">{b.operating_margin}%</span><ScoreBadge score={b.score}/></div>)}</div></Section>
+    </div>}
+
+    {tab === "data" && <div className="space-y-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4"><Metric label="Negocios analizados" value={fmtNum(businesses.length)} icon={Database}/><Metric label="Costos de venta faltantes" value={fmtNum(quality.costs)} icon={AlertTriangle}/><Metric label="Registros sin fecha" value={fmtNum(quality.dates)} icon={Activity}/><Metric label="Productos sin costo" value={fmtNum(quality.products)} icon={Package}/></div>
+      <Section title="Calidad de datos" description="Indicadores que afectan la confiabilidad de la inteligencia de PLATIA."><div className="grid grid-cols-1 md:grid-cols-3 gap-4">{[["Costos de venta faltantes",quality.costs,"Sin costo asociado a ventas"],["Registros sin fecha",quality.dates,"Movimientos que no pueden ubicarse en el período"],["Productos sin costo",quality.products,"Inventario sin costo utilizable"]].map(([label,value,desc])=><div key={label} className="border rounded-xl p-4"><div className="flex items-center justify-between gap-3"><span className="text-sm font-semibold">{label}</span><span className={`text-2xl font-extrabold ${Number(value)>0?"text-amber-600":""}`}>{fmtNum(value)}</span></div><p className="text-xs text-muted-foreground mt-2">{desc}</p></div>)}</div></Section>
+      <Section title="Cobertura del portafolio" description="Qué cantidad de negocios tiene información suficiente para cada lectura."><div className="space-y-4">{[["Con PLATIA Score",businesses.filter(b=>b.score != null).length],["Con ventas",businesses.filter(b=>Number(b.sales_count||0)>0).length],["Con inventario",businesses.filter(b=>Number(b.inventory_value||0)>0).length],["Con compras",businesses.filter(b=>Number(b.purchases_count||0)>0).length]].map(([label,value])=><div key={label}><div className="flex justify-between text-sm mb-1"><span>{label}</span><b>{fmtNum(value)} / {fmtNum(businesses.length)}</b></div><div className="h-2 bg-secondary rounded-full overflow-hidden"><div className="h-full bg-primary rounded-full" style={{width:`${businesses.length ? (value/businesses.length)*100 : 0}%`}}/></div></div>)}</div></Section>
+    </div>}
+  </div>;
 }
