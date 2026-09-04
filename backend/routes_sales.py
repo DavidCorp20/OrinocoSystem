@@ -5,6 +5,8 @@ from database import db
 from rates import get_effective_rate
 from routes_products import _csv_response, _xlsx_response
 from security import new_id, now_iso, require_business, require_roles
+from data_foundation import ensure_customer
+from ledger import record_payment_parts_as_cash
 from pymongo import ReturnDocument
 
 router=APIRouter(tags=["sales"])
@@ -47,7 +49,10 @@ async def create_sale(data:SaleIn,user:dict=Depends(require_business)):
     except HTTPException:
         for item in applied:await db.products.update_one({"id":item["product_id"],"business_id":bid},{"$inc":{"stock":item["base_quantity"]}});await db.inventory_movements.delete_many({"business_id":bid,"product_id":item["product_id"],"notes":f"Venta {sale['id'][:8]}"})
         raise
-    counter=await db.counters.find_one_and_update({"_id":f"factura-venta:{bid}"},{"$inc":{"seq":1}},upsert=True,return_document=ReturnDocument.AFTER);sale["invoice_number"]=f"F-{counter['seq']:06d}";await db.sales.insert_one(sale);sale.pop("_id",None);return {"sale":sale,"low_stock":low_stock}
+    counter=await db.counters.find_one_and_update({"_id":f"factura-venta:{bid}"},{"$inc":{"seq":1}},upsert=True,return_document=ReturnDocument.AFTER);sale["invoice_number"]=f"F-{counter['seq']:06d}";await db.sales.insert_one(sale)
+    if data.customer_name: await ensure_customer(bid,data.customer_name,data.customer_rif)
+    await record_payment_parts_as_cash(business_id=bid,source_type="sale",source_id=sale["id"],parts=payments,direction="in",user_email=user["email"],occurred_at=sale["created_at"],currency=business.get("currency"))
+    sale.pop("_id",None);return {"sale":sale,"low_stock":low_stock}
 @router.get("/sales/export/csv")
 async def export_sales(from_date:Optional[str]=None,to_date:Optional[str]=None,user:dict=Depends(require_roles("propietario","administrador"))):
     query={"business_id":user["business_id"]};
