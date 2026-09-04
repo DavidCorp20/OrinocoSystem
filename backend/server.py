@@ -75,6 +75,7 @@ env_origins = [
 ]
 frontend_origins = {
     normalize_origin(settings.FRONTEND_URL) if settings.FRONTEND_URL else "",
+    "https://platia.up.railway.app",
     "https://cuadrapp.up.railway.app",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
