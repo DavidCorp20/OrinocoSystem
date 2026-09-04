@@ -22,6 +22,7 @@ from routes_finance_export import router as finance_export_router
 from routes_financial_engine import router as financial_engine_router
 from routes_financial_insights import router as financial_insights_router
 from routes_intelligence import router as intelligence_router
+from routes_supplier_intelligence import router as supplier_intelligence_router
 from routes_inventory import router as inventory_router
 from routes_platform import router as platform_router
 from routes_subscription import router as subscription_router
@@ -47,95 +48,67 @@ from plan_access import DEFAULT_ENTITLEMENTS
 app = FastAPI(title="PLATIA API")
 api_router = APIRouter(prefix="/api")
 
-
 @api_router.get("/")
 async def root():
     return {"message": "PLATIA API"}
-
 
 @api_router.get("/healthz")
 async def healthz():
     await db.command("ping")
     return {"status": "ok"}
 
-
-for r in (
-    auth_router, business_router, products_router, inventory_router, sales_router,
-    purchases_router, expenses_router, finance_export_router, dashboard_router,
-    financial_engine_router, financial_insights_router, intelligence_router,
-    assistant_router, ai_router, rates_router, platform_router, subscription_router,
-    reports_router, obligations_router, recipes_router, promotions_router,
-    cash_closure_router, cubi_router, import_export_router,
-):
+for r in (auth_router, business_router, products_router, inventory_router, sales_router, purchases_router, expenses_router, finance_export_router, dashboard_router, financial_engine_router, financial_insights_router, intelligence_router, supplier_intelligence_router, assistant_router, ai_router, rates_router, platform_router, subscription_router, reports_router, obligations_router, recipes_router, promotions_router, cash_closure_router, cubi_router, import_export_router):
     api_router.include_router(r)
 app.include_router(api_router)
-
 
 def normalize_origin(v: str) -> str:
     return v.strip().rstrip("/")
 
+env_origins = [normalize_origin(o) for o in (settings.CORS_ORIGINS.split(",") if settings.CORS_ORIGINS else []) if o.strip()]
+frontend_origins = {normalize_origin(settings.FRONTEND_URL) if settings.FRONTEND_URL else "", "https://platia.up.railway.app", "https://cuadrapp.up.railway.app"}
+allowed_origins = sorted({o for o in env_origins + list(frontend_origins) if o})
+app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-env_origins = [
-    normalize_origin(o)
-    for o in (settings.CORS_ORIGINS.split(",") if settings.CORS_ORIGINS else [])
-    if o.strip()
-]
-frontend_origins = {
-    normalize_origin(settings.FRONTEND_URL) if settings.FRONTEND_URL else "",
-    "https://platia.up.railway.app",
-    "https://cuadrapp.up.railway.app",
-}
-allow_origins = [o for o in dict.fromkeys(env_origins + list(frontend_origins)) if o]
+RATE_LIMIT_WINDOW = 60
+RATE_LIMIT_MAX = 120
+_rate_buckets = defaultdict(deque)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allow_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+class RequestContextMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        started = time.monotonic()
+        key = request.client.host if request.client else "unknown"
+        now = time.monotonic()
+        bucket = _rate_buckets[key]
+        while bucket and now - bucket[0] > RATE_LIMIT_WINDOW: bucket.popleft()
+        if len(bucket) >= RATE_LIMIT_MAX:
+            return JSONResponse(status_code=429, content={"detail": "Demasiadas solicitudes. Intenta nuevamente en un momento."})
+        bucket.append(now)
+        try:
+            response = await call_next(request)
+        except Exception:
+            logging.exception("Unhandled request error: %s %s", request.method, request.url.path)
+            return JSONResponse(status_code=500, content={"detail": "Error interno del servidor"})
+        response.headers["X-Process-Time"] = f"{time.monotonic() - started:.4f}"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
 
-
-@app.middleware("http")
-async def security_headers(request: Request, call_next):
-    response = await call_next(request)
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    return response
-
+app.add_middleware(RequestContextMiddleware)
 
 @app.on_event("startup")
 async def startup_event():
+    await db.command("ping")
     await ensure_managed_accounts_approved()
-    await seed_all()
-    await seed_demo_account()
-    await upgrade_demo_catalog()
-    await seed_demo_product_images()
-
-    # Public PLATIA showcase bootstrap. It uses the exact same MongoDB
-    # connection as the running API, so it cannot silently seed another DB.
-    demo_enabled = os.getenv("DEMO_SEED_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
-    logging.info("[PLATIA] MongoDB startup: DB_NAME=%s DEMO_SEED_ENABLED=%s", settings.DB_NAME, demo_enabled)
-    if demo_enabled:
-        logging.info("[PLATIA] Demo showcase bootstrap starting in DB=%s", settings.DB_NAME)
-        await db.command("ping")
+    try:
+        await seed_all()
+        await seed_demo_account()
+        await upgrade_demo_catalog()
+        await seed_demo_product_images()
         await seed_showcase()
         await patch_demo_showcase()
-
-        demo_emails = [
-            "cafe.demo@platia.app",
-            "barber.demo@platia.app",
-            "moda.demo@platia.app",
-        ]
-        found = await db.users.count_documents({"email": {"$in": demo_emails}})
-        logging.info("[PLATIA] Demo users verified: %s/%s", found, len(demo_emails))
-        if found != len(demo_emails):
-            raise RuntimeError(
-                f"PLATIA demo bootstrap incomplete: found {found}/{len(demo_emails)} demo users in DB '{settings.DB_NAME}'"
-            )
-        logging.info("[PLATIA] Demo showcase bootstrap completed successfully")
-
+    except Exception:
+        logging.exception("Optional seed process failed")
 
 @app.on_event("shutdown")
 async def shutdown_event():
