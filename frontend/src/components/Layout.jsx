@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link,NavLink, useNavigate } from "react-router-dom";
+import { Link,NavLink,Outlet,useNavigate } from "react-router-dom";
 import { LayoutDashboard,Package,ArrowLeftRight,ShoppingCart,Truck,TrendingUp,FileText,LogOut,Menu,Bot,BrainCircuit,Users,Settings,ShieldCheck,WalletCards,Boxes,ChevronDown,Tag,LineChart,Plus,Receipt,Wallet,CreditCard,LockKeyhole,Database,BarChart3 } from "lucide-react";
 import { fmtNum } from "../lib/format";import { useAuth } from "../context/AuthContext";import AIAssistant from "./AIAssistant";import InfoHelp from "./InfoHelp";import PendingPayments from "./PendingPayments";import { Sheet,SheetContent,SheetTitle,SheetTrigger } from "./ui/sheet";
 const RANK={vendedor:1,administrador:2,propietario:3};
