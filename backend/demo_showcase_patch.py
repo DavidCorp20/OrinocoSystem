@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from database import db
 from security import hash_password
 
+DEMO_VERSION = 1
+
 async def main():
     pro = await db.platform_plans.find_one({"name": "Pro", "active": True}, {"_id": 0})
     demo_password = os.getenv("DEMO_PASSWORD")
@@ -19,12 +21,18 @@ async def main():
         if not user or not user.get("business_id"):
             continue
 
-        # Keep the demo credentials synchronized on every container startup.
-        # The password itself must come from Railway/environment configuration.
+        # Clear lockouts caused by previous failed demo login attempts.
+        await db.login_attempts.delete_one({"identifier": email})
+
         if demo_password:
             await db.users.update_one(
                 {"email": email},
-                {"$set": {"password_hash": hash_password(demo_password), "approved": True}},
+                {"$set": {
+                    "password_hash": hash_password(demo_password),
+                    "approved": True,
+                    "approved_at": datetime.now(timezone.utc).isoformat(),
+                    "approved_by": "demo_patch",
+                }},
             )
             user = await db.users.find_one({"email": email})
 
@@ -32,6 +40,9 @@ async def main():
         business = await db.businesses.find_one(
             {"id": bid}, {"_id": 0, "demo_expenses_finalized": 1}
         )
+        if not business:
+            continue
+
         if name == "Café Aroma Caracas" and not business.get("demo_expenses_finalized"):
             async for e in db.expenses.find({"business_id": bid}):
                 await db.expenses.update_one(
@@ -47,19 +58,22 @@ async def main():
                 {"business_id": bid, "status": "activo"}
             )
             if not sub:
-                await db.platform_subscriptions.insert_one(
-                    {
-                        "id": f"demo-{user['id']}",
-                        "business_id": bid,
-                        "plan_id": pro["id"],
-                        "status": "activo",
-                        "monthly_price_usd": pro.get("monthly_price_usd", 0),
-                        "created_at": datetime.now(timezone.utc).isoformat(),
-                    }
-                )
+                await db.platform_subscriptions.insert_one({
+                    "id": f"demo-{user['id']}",
+                    "business_id": bid,
+                    "plan_id": pro["id"],
+                    "status": "activo",
+                    "monthly_price_usd": pro.get("monthly_price_usd", 0),
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                })
+
         await db.businesses.update_one(
             {"id": bid},
-            {"$set": {"demo_showcase_version": 2, "is_demo": True, "active": True}},
+            {"$set": {
+                "demo_showcase_version": DEMO_VERSION,
+                "is_demo": True,
+                "active": True,
+            }},
         )
 
 if __name__ == "__main__":
