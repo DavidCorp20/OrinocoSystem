@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from database import db
 from models import AdminPasswordResetIn, BusinessStatusIn, PlatformBillingIn, PlatformExpenseIn, PlatformPlanIn, PlatformSubscriptionIn, UserApprovalIn
 from security import hash_password, new_id, now_iso, require_superadmin
+from platia_score import calculate_platia_score
 
 router = APIRouter(tags=["platform"])
 PLATFORM_EXPENSE_CATEGORIES={"infraestructura","marketing","soporte","licencias","otros"};SUB_STATUSES={"activo","pendiente","vencido","cancelado"}
@@ -22,6 +23,13 @@ async def platform_overview(user:dict=Depends(require_superadmin)):
         owner=owners.get(b.get("owner_id"),{});sub=next((s for s in subs if s.get("business_id")==b["id"] and s.get("status")!="cancelado"),None)
         result.append({"id":b["id"],"name":b["name"],"type":b.get("type"),"currency":b.get("currency","USD"),"active":b.get("active",True),"created_at":b.get("created_at"),"owner_email":owner.get("email","—"),"owner_name":owner.get("name","—"),"users_count":user_counts.get(b["id"],0),"products_count":prod_counts.get(b["id"],0),"sales_count":sale_counts.get(b["id"],0),"plan_id":(sub or {}).get("plan_id",b.get("plan_id")),"plan_name":(sub or {}).get("plan_name",b.get("plan_name")),"subscription_status":(sub or {}).get("status",b.get("subscription_status","sin_plan")),"subscription_created_at":(sub or {}).get("created_at"),"subscription_due_date":(sub or {}).get("due_date")})
     return {"stats":{"total":len(result),"activos":sum(bool(b["active"]) for b in result),"inactivos":sum(not bool(b["active"]) for b in result),"nuevos_30":sum((b.get("created_at") or "")>=d30 for b in result),"gastos_mes":month_cost,"suscripciones_activas":len(active),"mrr_usd":mrr,"proyeccion_mes_usd":mrr,"cobrado_mes_usd":month_revenue,"neto_mes_usd":round(month_revenue-month_cost,2)},"businesses":result,"plans":list(plans.values())}
+
+@router.get("/platform/platia-score/{business_id}")
+async def platform_platia_score(business_id:str, days:int=90, user:dict=Depends(require_superadmin)):
+    if days < 30 or days > 3650: raise HTTPException(400,"days debe estar entre 30 y 3650")
+    business=await db.businesses.find_one({"id":business_id},{"_id":0,"id":1,"name":1})
+    if not business: raise HTTPException(404,"Negocio no encontrado")
+    return {"business":business,"score":await calculate_platia_score(business_id,days)}
 
 @router.get("/platform/pending-users")
 async def pending_users(user:dict=Depends(require_superadmin)): return {"users":await db.users.find({"platform_role":{"$ne":"superadmin"},"approved":{"$ne":True}},{"_id":0,"password_hash":0}).sort("created_at",-1).to_list(5000)}
