@@ -159,6 +159,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 PLAN_PATHS = {
     "/finance": "finance", "/finances": "finance", "/finanzas": "finance",
+    "/financial-engine": "finance",
     "/obligations": "obligations", "/reports": "reports_advanced",
     "/projections": "projections", "/projection": "projections",
     "/promotions": "promotions", "/recipes": "recipes",
