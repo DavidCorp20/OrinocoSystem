@@ -42,7 +42,7 @@ from seed import seed_all
 from demo_seed import seed_demo_account
 from demo_catalog_upgrade import upgrade_demo_catalog
 from demo_product_images import seed_demo_product_images
-from demo_showcase_seed import seed_showcase
+from demo_showcase_seed import seed_showcase, PROFILES
 from demo_showcase_patch import main as patch_demo_showcase
 from plan_access import DEFAULT_ENTITLEMENTS
 
@@ -90,10 +90,26 @@ app.add_middleware(RequestContextMiddleware)
 
 @app.on_event("startup")
 async def startup_event():
-    await db.command("ping"); await ensure_managed_accounts_approved()
-    try:
-        await seed_all(); await seed_demo_account(); await upgrade_demo_catalog(); await seed_demo_product_images(); await seed_showcase(); await patch_demo_showcase()
-    except Exception: logging.exception("Optional seed process failed")
+    logging.info("[PLATIA] MongoDB startup: DB_NAME=%s DEMO_SEED_ENABLED=%s APP_ENV=%s", settings.DB_NAME, os.getenv("DEMO_SEED_ENABLED", "false"), settings.APP_ENV)
+    await db.command("ping")
+    await ensure_managed_accounts_approved()
+
+    # Never hide bootstrap failures: a production instance without the demo
+    # accounts is not considered healthy for the current showcase release.
+    logging.info("[PLATIA] Demo showcase bootstrap starting")
+    await seed_all()
+    await seed_demo_account()
+    await upgrade_demo_catalog()
+    await seed_demo_product_images()
+    await seed_showcase()
+    await patch_demo_showcase()
+
+    expected = [p["email"] for p in PROFILES]
+    found = await db.users.count_documents({"email": {"$in": expected}})
+    logging.info("[PLATIA] Demo users verified: %s/%s", found, len(expected))
+    if found != len(expected):
+        raise RuntimeError(f"Demo bootstrap incomplete: {found}/{len(expected)} users found in DB_NAME={settings.DB_NAME}")
+    logging.info("[PLATIA] Demo showcase bootstrap completed successfully")
 
 @app.on_event("shutdown")
 async def shutdown_event(): client.close()
