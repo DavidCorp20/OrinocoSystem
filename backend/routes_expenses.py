@@ -5,6 +5,7 @@ from database import db
 from models import ExpenseIn
 from routes_products import _csv_response, _xlsx_response
 from security import new_id, now_iso, require_roles
+from ledger import record_cash_movement, is_cash_method
 
 router = APIRouter(tags=["expenses"])
 CATEGORIES = {"alquiler", "servicios", "personal", "transporte", "marketing", "otros"}
@@ -18,9 +19,14 @@ async def list_expenses(user: dict = MANAGER):
 @router.post("/expenses")
 async def create_expense(data: ExpenseIn, user: dict = MANAGER):
     if data.category not in CATEGORIES: raise HTTPException(status_code=400, detail="Categoría inválida")
-    payment_method = data.payment_method.strip().lower()
-    expense = {"id": new_id(), "business_id": user["business_id"], "category": data.category, "description": data.description.strip(), "amount": round(data.amount, 2), "payment_method": payment_method, "date": data.date or now_iso()[:10], "notes": data.notes, "user_email": user["email"], "created_at": now_iso()}
-    await db.expenses.insert_one(expense); expense.pop("_id", None); return {"expense": expense}
+    payment_method = data.payment_method.strip().lower(); created_at=now_iso()
+    expense = {"id": new_id(), "business_id": user["business_id"], "category": data.category, "description": data.description.strip(), "amount": round(data.amount, 2), "payment_method": payment_method, "date": data.date or created_at[:10], "notes": data.notes, "user_email": user["email"], "created_at": created_at}
+    await db.expenses.insert_one(expense)
+    if is_cash_method(payment_method):
+        cm=await record_cash_movement(business_id=user["business_id"],direction="out",movement_type="expense",source_type="expense",source_id=expense["id"],amount=expense["amount"],payment_method=payment_method,user_email=user["email"],occurred_at=created_at,notes=expense["description"])
+        expense["cash_movement_id"]=cm["id"]
+        await db.expenses.update_one({"id":expense["id"],"business_id":user["business_id"]},{"$set":{"cash_movement_id":cm["id"]}})
+    expense.pop("_id", None); return {"expense": expense}
 
 @router.delete("/expenses/{expense_id}")
 async def delete_expense(expense_id: str, user: dict = MANAGER):
