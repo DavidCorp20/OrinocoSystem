@@ -23,25 +23,29 @@ async def record_cash_movement(
     currency: Optional[str] = None,
     notes: Optional[str] = None,
 ) -> dict[str, Any]:
-    """Create one tenant-scoped cash ledger entry, idempotently per source/payment part."""
+    """Create one tenant-scoped cash ledger entry idempotently.
+
+    The source identifiers are deliberately part of the lookup so retries of
+    the same business event return the original ledger entry instead of
+    creating a second cash movement.
+    """
     amount = round(float(amount), 2)
     if amount <= 0:
         raise ValueError("Cash movement amount must be positive")
     if direction not in {"in", "out"}:
         raise ValueError("Invalid cash movement direction")
     method = (payment_method or "").strip().lower()
-    existing = await db.cash_movements.find_one(
-        {
-            "business_id": business_id,
-            "source_type": source_type,
-            "source_id": source_id,
-            "payment_method": method,
-            "direction": direction,
-        },
-        {"_id": 0},
-    )
+    query = {
+        "business_id": business_id,
+        "source_type": source_type,
+        "source_id": source_id,
+        "payment_method": method,
+        "direction": direction,
+    }
+    existing = await db.cash_movements.find_one(query, {"_id": 0})
     if existing:
         return existing
+
     doc = {
         "id": new_id(),
         "business_id": business_id,
@@ -57,12 +61,30 @@ async def record_cash_movement(
         "notes": notes,
         "created_at": now_iso(),
     }
-    await db.cash_movements.insert_one(doc)
-    doc.pop("_id", None)
-    return doc
+    # Atomic upsert prevents two concurrent retries from both inserting the
+    # same ledger event. Existing legacy duplicates are tolerated.
+    result = await db.cash_movements.update_one(
+        query,
+        {"$setOnInsert": doc},
+        upsert=True,
+    )
+    if result.upserted_id is not None:
+        return doc
+    existing = await db.cash_movements.find_one(query, {"_id": 0})
+    return existing or doc
 
 
-async def record_payment_parts_as_cash(*, business_id: str, source_type: str, source_id: str, parts: list[dict], direction: str, user_email: Optional[str] = None, occurred_at: Optional[str] = None, currency: Optional[str] = None):
+async def record_payment_parts_as_cash(
+    *,
+    business_id: str,
+    source_type: str,
+    source_id: str,
+    parts: list[dict],
+    direction: str,
+    user_email: Optional[str] = None,
+    occurred_at: Optional[str] = None,
+    currency: Optional[str] = None,
+):
     """Record only cash portions of a sale/purchase/payment split."""
     result = []
     for idx, part in enumerate(parts or []):
