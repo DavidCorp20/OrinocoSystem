@@ -62,10 +62,12 @@ async def _business_metrics(business, start, end, owner):
         "inventory_value": snapshot["inventory_value"],
         "working_capital": snapshot["working_capital"],
         "score": score["score"],
+        "raw_score": score.get("raw_score", score["score"]),
         "score_band": score["band"],
         "score_components": score.get("components", []),
         "score_alerts": score.get("risk_alerts", []),
         "score_actions": score.get("actions", []),
+        "score_caps": score.get("score_caps", []),
         "data_quality": snapshot.get("data_quality", {}),
     }
 
@@ -78,10 +80,7 @@ async def platform_intelligence(days: int = 90, user: dict = Depends(require_sup
     end = datetime.now(timezone.utc)
     start = end - timedelta(days=days)
     businesses = await db.businesses.find({}, {"_id": 0}).sort("created_at", -1).to_list(5000)
-    owners = {
-        u["id"]: u
-        for u in await db.users.find({}, {"_id": 0, "id": 1, "email": 1, "name": 1}).to_list(10000)
-    }
+    owners = {u["id"]: u for u in await db.users.find({}, {"_id": 0, "id": 1, "email": 1, "name": 1}).to_list(10000)}
 
     semaphore = asyncio.Semaphore(8)
 
@@ -112,17 +111,7 @@ async def platform_intelligence(days: int = 90, user: dict = Depends(require_sup
         if not supplier:
             continue
         key = f"{supplier.get('business_id')}:{sid}"
-        row = supplier_rows.setdefault(key, {
-            "supplier_id": sid,
-            "business_id": supplier.get("business_id"),
-            "business_name": business_names.get(supplier.get("business_id"), "Negocio"),
-            "name": supplier.get("name", "Proveedor"),
-            "rif": supplier.get("rif"),
-            "purchases": 0,
-            "purchase_amount": 0.0,
-            "items": 0,
-            "last_purchase": None,
-        })
+        row = supplier_rows.setdefault(key, {"supplier_id": sid, "business_id": supplier.get("business_id"), "business_name": business_names.get(supplier.get("business_id"), "Negocio"), "name": supplier.get("name", "Proveedor"), "rif": supplier.get("rif"), "purchases": 0, "purchase_amount": 0.0, "items": 0, "last_purchase": None})
         row["purchases"] += 1
         row["purchase_amount"] += float(event.get("amount", 0) or 0)
         row["items"] += int(event.get("items_count", 0) or 0)
@@ -141,20 +130,7 @@ async def platform_intelligence(days: int = 90, user: dict = Depends(require_sup
 
     return {
         "period": {"start": start.isoformat(), "end": end.isoformat(), "days": days},
-        "summary": {
-            "businesses": len(rows),
-            "active_businesses": len(active),
-            "sales": revenue,
-            "gross_profit": gross_profit,
-            "operating_profit": operating_profit,
-            "operating_margin": round(operating_profit / revenue * 100, 2) if revenue else 0,
-            "purchases": purchases,
-            "operating_expenses": expenses,
-            "inventory": inventory,
-            "average_score": round(sum(scores) / len(scores)) if scores else 0,
-            "scored_businesses": len(scores),
-            "suppliers": len(supplier_list),
-        },
+        "summary": {"businesses": len(rows), "active_businesses": len(active), "sales": revenue, "gross_profit": gross_profit, "operating_profit": operating_profit, "operating_margin": round(operating_profit / revenue * 100, 2) if revenue else 0, "purchases": purchases, "operating_expenses": expenses, "inventory": inventory, "average_score": round(sum(scores) / len(scores)) if scores else 0, "scored_businesses": len(scores), "suppliers": len(supplier_list)},
         "businesses": sorted(rows, key=lambda x: x["sales"], reverse=True),
         "suppliers": supplier_list[:500],
     }
