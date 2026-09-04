@@ -22,7 +22,11 @@ async def _business_metrics(business, start, end, owner):
     score_task = calculate_platia_score(bid, max(30, (end - start).days))
     sales_task = db.sales.find({"business_id": bid}, {"_id": 0}).to_list(50000)
     purchases_task = db.purchases.find({"business_id": bid}, {"_id": 0}).to_list(50000)
-    sales, purchases, snapshot, score = await asyncio.gather(sales_task, purchases_task, snapshot_task, score_task)
+    products_task = db.products.count_documents({"business_id": bid})
+    users_task = db.users.count_documents({"business_id": bid})
+    sales, purchases, snapshot, score, products_count, users_count = await asyncio.gather(
+        sales_task, purchases_task, snapshot_task, score_task, products_task, users_task
+    )
 
     period_sales = [x for x in sales if _valid(x) and _in_period(x, start, end)]
     period_purchases = [x for x in purchases if _valid(x) and _in_period(x, start, end)]
@@ -38,8 +42,8 @@ async def _business_metrics(business, start, end, owner):
         "owner_name": owner.get("name", "—"),
         "owner_email": owner.get("email", "—"),
         "created_at": business.get("created_at"),
-        "users_count": await db.users.count_documents({"business_id": bid}),
-        "products_count": snapshot.get("data_quality", {}).get("missing_inventory_cost_products", 0) + snapshot.get("inventory_value", 0) * 0 + await db.products.count_documents({"business_id": bid}),
+        "users_count": users_count,
+        "products_count": products_count,
         "sales_count": len(period_sales),
         "purchases_count": len(period_purchases),
         "sales": snapshot["revenue"],
