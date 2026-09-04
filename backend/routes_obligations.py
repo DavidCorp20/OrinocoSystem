@@ -52,6 +52,20 @@ async def list_obligation_payments(obligation_id:str,user:dict=Depends(require_b
     if not await db.obligations.find_one({"id":obligation_id,"business_id":user["business_id"]},{"_id":1}):raise HTTPException(404,"Cuenta no encontrada")
     return {"payments":await db.obligation_payments.find({"obligation_id":obligation_id,"business_id":user["business_id"]},{"_id":0}).sort("paid_at",-1).to_list(1000)}
 
+@router.get("/cash-movements")
+async def list_cash_movements(direction:Optional[str]=None,movement_type:Optional[str]=None,from_date:Optional[str]=None,to_date:Optional[str]=None,user:dict=Depends(require_business)):
+    q={"business_id":user["business_id"]}
+    if direction in {"in","out"}:q["direction"]=direction
+    if movement_type:q["type"]=movement_type
+    if from_date or to_date:
+        q["occurred_at"]={}
+        if from_date:q["occurred_at"]["$gte"]=from_date
+        if to_date:q["occurred_at"]["$lte"]=to_date+"T23:59:59"
+    movements=await db.cash_movements.find(q,{"_id":0}).sort("occurred_at",-1).to_list(5000)
+    total_in=round(sum(float(x.get("amount",0) or 0) for x in movements if x.get("direction")=="in"),2)
+    total_out=round(sum(float(x.get("amount",0) or 0) for x in movements if x.get("direction")=="out"),2)
+    return {"movements":movements,"total_in":total_in,"total_out":total_out,"net":round(total_in-total_out,2)}
+
 @router.patch("/obligations/{obligation_id}/status")
 async def update_obligation_status(obligation_id:str,status:str,user:dict=MANAGER):
     if status not in {"pendiente","parcial","pagada","cancelada"}:raise HTTPException(400,"Estado inválido")
