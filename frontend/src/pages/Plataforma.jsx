@@ -1,22 +1,148 @@
-import {useCallback,useEffect,useState} from "react";
-import {Plus,ShieldCheck,Store,Users,CreditCard,Clock3,RefreshCw,Receipt,CalendarDays,BarChart3,AlertTriangle,CheckCircle2,TrendingUp} from "lucide-react";
-import {toast} from "sonner";import api,{apiError} from "../lib/api";import {fmtDate,fmtMoney,fmtNum} from "../lib/format";import StatCard from "../components/StatCard";import {Button} from "../components/ui/button";import {Input} from "../components/ui/input";import {Label} from "../components/ui/label";import {Dialog,DialogContent,DialogHeader,DialogTitle} from "../components/ui/dialog";import {Select,SelectContent,SelectItem,SelectTrigger,SelectValue} from "../components/ui/select";import {Switch} from "../components/ui/switch";
-const CATS=[{value:"infraestructura",label:"Infraestructura"},{value:"marketing",label:"Marketing"},{value:"soporte",label:"Soporte"},{value:"licencias",label:"Licencias"},{value:"otros",label:"Otros"}];const EMPTY={name:"",description:"",monthly_price_usd:"",active:true,features:[]};
-export default function Plataforma(){const[data,setData]=useState(null),[expenses,setExpenses]=useState([]),[plans,setPlans]=useState([]),[subs,setSubs]=useState([]),[pending,setPending]=useState([]),[billing,setBilling]=useState([]),[metrics,setMetrics]=useState(null),[tab,setTab]=useState("resumen"),[planOpen,setPlanOpen]=useState(false),[billOpen,setBillOpen]=useState(false),[assignOpen,setAssignOpen]=useState(false),[expenseOpen,setExpenseOpen]=useState(false),[saving,setSaving]=useState(false),[editing,setEditing]=useState(null),[selectedBusiness,setSelectedBusiness]=useState(null),[selectedSub,setSelectedSub]=useState(null),[score,setScore]=useState(null),[scoreLoading,setScoreLoading]=useState(false),[scoreDays,setScoreDays]=useState("90"),[planForm,setPlanForm]=useState(EMPTY),[assignForm,setAssignForm]=useState({plan_id:"",status:"activo",due_date:""}),[billForm,setBillForm]=useState({amount:"",payment_method:"transferencia",paid_at:"",notes:""}),[expenseForm,setExpenseForm]=useState({category:"infraestructura",description:"",amount:"",date:""});
- const load=useCallback(async()=>{try{const[o,e,p,s,u,b,m]=await Promise.all([api.get("/platform/overview"),api.get("/platform/expenses"),api.get("/platform/plans"),api.get("/platform/subscriptions"),api.get("/platform/pending-users"),api.get("/platform/billing"),api.get("/platform/billing-metrics")]);setData(o.data);setExpenses(e.data.expenses||[]);setPlans(p.data.plans||[]);setSubs(s.data.subscriptions||[]);setPending(u.data.users||[]);setBilling(b.data.billing||[]);setMetrics(m.data)}catch(e){toast.error(apiError(e))}},[]);useEffect(()=>{load()},[load]);
- const loadScore=useCallback(async(businessId,days=scoreDays)=>{if(!businessId)return;setScoreLoading(true);try{const r=await api.get(`/platform/platia-score/${businessId}?days=${Number(days)}`);setScore(r.data)}catch(e){setScore(null);toast.error(apiError(e))}finally{setScoreLoading(false)}},[scoreDays]);
- const approve=async u=>{try{await api.put(`/platform/users/${u.id}/approval`,{approved:true});toast.success("Cuenta aprobada");load()}catch(e){toast.error(apiError(e))}};const toggleBusiness=async(b,v)=>{try{await api.put(`/platform/businesses/${b.id}/status`,{active:v});toast.success(v?"Cuenta habilitada":"Cuenta deshabilitada");load()}catch(e){toast.error(apiError(e))}};
- const savePlan=async e=>{e.preventDefault();setSaving(true);try{const body={...planForm,monthly_price_usd:Number(planForm.monthly_price_usd)};if(editing)await api.put(`/platform/plans/${editing.id}`,body);else await api.post("/platform/plans",body);toast.success("Plan guardado");setPlanOpen(false);load()}catch(x){toast.error(apiError(x))}finally{setSaving(false)}};
- const assign=async e=>{e.preventDefault();setSaving(true);try{await api.post(`/platform/businesses/${selectedBusiness.id}/subscription`,{...assignForm,due_date:assignForm.due_date?new Date(assignForm.due_date+"T23:59:59Z").toISOString():null});toast.success("Plan asignado");setAssignOpen(false);load()}catch(x){toast.error(apiError(x))}finally{setSaving(false)}};
- const changeSub=async(s,status)=>{try{await api.patch(`/platform/subscriptions/${s.id}/status?status=${status}`);load()}catch(e){toast.error(apiError(e))}};const registerBilling=async e=>{e.preventDefault();setSaving(true);try{await api.post("/platform/billing",{subscription_id:selectedSub.id,amount:Number(billForm.amount),payment_method:billForm.payment_method,paid_at:billForm.paid_at?new Date(billForm.paid_at).toISOString():null,notes:billForm.notes});toast.success("Pago registrado");setBillOpen(false);load()}catch(x){toast.error(apiError(x))}finally{setSaving(false)}};const addExpense=async e=>{e.preventDefault();setSaving(true);try{await api.post("/platform/expenses",{...expenseForm,amount:Number(expenseForm.amount),date:expenseForm.date||null});toast.success("Gasto registrado");setExpenseOpen(false);load()}catch(x){toast.error(apiError(x))}finally{setSaving(false)}};
- if(!data)return <div className="p-8 text-sm text-muted-foreground">Cargando plataforma…</div>;const s=data.stats;const tabs=[['resumen','Resumen'],['clientes','Clientes'],['score','PLATIA Score'],['planes','Planes y precios'],['cobros','Cobros'],['gastos','Costos']];return <div className="space-y-5" data-testid="plataforma-page"><div className="flex items-center justify-between flex-wrap gap-3"><div><h1 className="font-heading text-3xl font-extrabold flex items-center gap-2"><ShieldCheck className="w-7 h-7 text-primary"/>Plataforma</h1><p className="text-sm text-muted-foreground">Gobernanza, clientes, inteligencia de riesgo, planes, vencimientos, cobros y costos.</p></div><Button variant="outline" onClick={load}><RefreshCw className="w-4 h-4 mr-2"/>Actualizar</Button></div><div className="flex gap-1 p-1 bg-secondary rounded-xl overflow-x-auto">{tabs.map(([v,l])=><button key={v} onClick={()=>setTab(v)} className={`px-4 py-2 rounded-lg text-sm whitespace-nowrap ${tab===v?'bg-background shadow-sm':''}`}>{l}</button>)}</div>
- {tab==='resumen'&&<><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4"><StatCard title="Negocios" value={fmtNum(s.total)} icon={Store}/><StatCard title="Activos" value={fmtNum(s.activos)} icon={Users}/><StatCard title="MRR" value={fmtMoney(s.mrr_usd||0,'USD')} icon={CreditCard}/><StatCard title="Cobrado este mes" value={fmtMoney(s.cobrado_mes_usd||0,'USD')} icon={Receipt}/><StatCard title="Nuevos 30 días" value={fmtNum(s.nuevos_30||0)} icon={CalendarDays}/></div><div className="bg-card border rounded-2xl p-5"><h3 className="font-heading font-bold mb-3">Próximos vencimientos</h3>{(metrics?.due_soon||[]).length?<div className="divide-y">{metrics.due_soon.map(x=><div key={x.id} className="py-3 flex justify-between"><span>{x.plan_name||'Sin plan'}</span><b>{fmtDate(x.due_date)}</b></div>)}</div>:<p className="text-sm text-muted-foreground">No hay cuentas por vencer en los próximos 7 días.</p>}</div></>}
- {tab==='clientes'&&<div className="space-y-4"><div className="bg-card border rounded-2xl overflow-hidden"><div className="px-5 py-4 border-b"><h3 className="font-heading font-bold">Cuentas y suscripciones</h3></div><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left text-xs uppercase text-muted-foreground bg-secondary/50"><th className="px-5 py-3">Negocio</th><th>Alta</th><th>Plan</th><th>Inicio plan</th><th>Vence</th><th>Estado</th><th>Cuenta</th><th></th></tr></thead><tbody className="divide-y">{data.businesses.map(b=><tr key={b.id}><td className="px-5 py-3"><b>{b.name}</b><div className="text-xs text-muted-foreground">{b.owner_email}</div></td><td>{fmtDate(b.created_at)}</td><td>{b.plan_name||'Sin plan'}</td><td>{b.subscription_created_at?fmtDate(b.subscription_created_at):'—'}</td><td>{b.subscription_due_date?fmtDate(b.subscription_due_date):'—'}</td><td>{b.subscription_status||'sin plan'}</td><td><Switch checked={b.active} onCheckedChange={v=>toggleBusiness(b,v)}/></td><td><Button size="sm" variant="outline" onClick={()=>{setSelectedBusiness(b);setAssignForm({plan_id:b.plan_id||plans[0]?.id||'',status:'activo',due_date:b.subscription_due_date?.slice(0,10)||''});setAssignOpen(true)}}>Asignar plan</Button></td></tr>)}</tbody></table></div></div><div className="bg-card border rounded-2xl p-5"><h3 className="font-heading font-bold mb-3">Solicitudes pendientes ({pending.length})</h3>{pending.map(u=><div key={u.id} className="flex items-center gap-3 py-3 border-b"><div className="flex-1"><b>{u.name||u.email}</b><div className="text-xs text-muted-foreground">{u.email} · Alta {fmtDate(u.created_at)}</div></div><Button size="sm" onClick={()=>approve(u)}>Aprobar</Button></div>)}</div></div>}
- {tab==='score'&&<div className="space-y-4"><div className="bg-card border rounded-2xl p-5"><div className="flex items-center justify-between gap-4 flex-wrap"><div><h3 className="font-heading font-bold flex items-center gap-2"><BarChart3 className="w-5 h-5 text-primary"/>PLATIA Score</h3><p className="text-sm text-muted-foreground mt-1">Indicador interno de salud y riesgo empresarial. Solo visible para administración de PLATIA.</p></div><div className="flex items-center gap-2"><Select value={scoreDays} onValueChange={v=>{setScoreDays(v);if(selectedBusiness)loadScore(selectedBusiness.id,v)}}><SelectTrigger className="w-28"><SelectValue/></SelectTrigger><SelectContent>{['30','60','90','180','365'].map(v=><SelectItem key={v} value={v}>{v} días</SelectItem>)}</SelectContent></Select><Button variant="outline" disabled={!selectedBusiness||scoreLoading} onClick={()=>loadScore(selectedBusiness?.id,scoreDays)}><RefreshCw className={`w-4 h-4 mr-2 ${scoreLoading?'animate-spin':''}`}/>Calcular</Button></div></div><div className="mt-5 grid md:grid-cols-[minmax(240px,1fr)_2fr] gap-4"><div className="border rounded-2xl p-4"><Label>Negocio</Label><Select value={selectedBusiness?.id||""} onValueChange={v=>{const b=data.businesses.find(x=>x.id===v);setSelectedBusiness(b||null);setScore(null);if(b)loadScore(b.id,scoreDays)}}><SelectTrigger className="mt-2"><SelectValue placeholder="Selecciona un negocio"/></SelectTrigger><SelectContent>{data.businesses.map(b=><SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent></Select><p className="text-xs text-muted-foreground mt-3">Selecciona una cuenta para consultar su score y sus señales.</p></div>{!score?<div className="border rounded-2xl p-6 flex items-center justify-center text-sm text-muted-foreground">{scoreLoading?'Calculando PLATIA Score…':'Selecciona un negocio para ver su evaluación.'}</div>:<div className="space-y-4"><div className="grid sm:grid-cols-3 gap-3"><div className="border rounded-2xl p-4"><p className="text-xs text-muted-foreground">Score</p><p className="text-4xl font-extrabold mt-1">{score.score}<span className="text-lg text-muted-foreground">/1000</span></p></div><div className="border rounded-2xl p-4"><p className="text-xs text-muted-foreground">Banda</p><p className="text-2xl font-bold mt-2 capitalize">{score.band}</p></div><div className="border rounded-2xl p-4"><p className="text-xs text-muted-foreground">Período</p><p className="text-2xl font-bold mt-2">{score.period_days} días</p></div></div><div className="border rounded-2xl p-4"><div className="flex items-center gap-2 mb-3"><TrendingUp className="w-4 h-4"/><h4 className="font-bold">Componentes</h4></div><div className="space-y-3">{(score.components||[]).map(c=><div key={c.name}><div className="flex justify-between text-sm mb-1"><span>{c.name}</span><b>{c.score}</b></div><div className="h-2 bg-secondary rounded-full overflow-hidden"><div className="h-full bg-primary rounded-full" style={{width:`${Math.max(0,Math.min(100,c.score/10))}%`}}/></div><p className="text-xs text-muted-foreground mt-1">Peso {c.weight}%</p></div>)}</div></div><div className="grid md:grid-cols-2 gap-4"><div className="border rounded-2xl p-4"><h4 className="font-bold flex items-center gap-2 mb-3"><CheckCircle2 className="w-4 h-4"/>Fortalezas</h4>{(score.strengths||[]).length?<ul className="space-y-2 text-sm">{score.strengths.map(x=><li key={x}>• {x}</li>)}</ul>:<p className="text-sm text-muted-foreground">Sin fortalezas destacadas.</p>}</div><div className="border rounded-2xl p-4"><h4 className="font-bold flex items-center gap-2 mb-3"><AlertTriangle className="w-4 h-4"/>Alertas de riesgo</h4>{(score.risk_alerts||[]).length?<ul className="space-y-2 text-sm">{score.risk_alerts.map(x=><li key={x}>• {x}</li>)}</ul>:<p className="text-sm text-muted-foreground">Sin alertas de riesgo.</p>}</div></div><div className="border rounded-2xl p-4"><h4 className="font-bold mb-2">Acciones recomendadas</h4>{(score.actions||[]).length?<ul className="space-y-2 text-sm">{score.actions.map(x=><li key={x}>• {x}</li>)}</ul>:<p className="text-sm text-muted-foreground">Sin acciones específicas.</p>}</div><p className="text-xs text-muted-foreground">{score.disclaimer}</p></div>}</div></div>}
- {tab==='planes'&&<div className="space-y-4"><div className="flex justify-end"><Button onClick={()=>{setEditing(null);setPlanForm(EMPTY);setPlanOpen(true)}}><Plus className="w-4 h-4 mr-2"/>Nuevo plan</Button></div><div className="grid md:grid-cols-3 gap-4">{plans.map(p=><div key={p.id} className="bg-card border rounded-2xl p-5"><div className="flex justify-between gap-3"><h3 className="text-xl font-bold">{p.name}</h3><span className={`text-xs px-2 py-1 rounded-full ${p.active?'bg-emerald-100 text-emerald-700':'bg-secondary text-muted-foreground'}`}>{p.active?'Activo':'Inactivo'}</span></div><p className="text-sm text-muted-foreground mt-1">{p.description}</p><p className="text-3xl font-bold mt-5">{fmtMoney(p.monthly_price_usd,'USD')}<span className="text-sm font-normal"> / mes</span></p><div className="flex gap-2 mt-5"><Button variant="outline" onClick={()=>{setEditing(p);setPlanForm({name:p.name,description:p.description||'',monthly_price_usd:p.monthly_price_usd,active:p.active,features:p.features||[]});setPlanOpen(true)}}>Editar / activar</Button></div></div>)}</div></div>}
- {tab==='cobros'&&<div className="space-y-4"><div className="bg-card border rounded-2xl overflow-hidden"><div className="px-5 py-4 border-b"><h3 className="font-heading font-bold">Suscripciones</h3></div><div className="divide-y">{subs.map(x=><div key={x.id} className="px-5 py-4 flex items-center gap-3 flex-wrap"><div className="flex-1 min-w-[220px]"><b>{x.plan_name}</b><div className="text-xs text-muted-foreground">{x.business_id} · desde {fmtDate(x.created_at)}</div></div><span className="font-semibold">{fmtMoney(x.monthly_price_usd,'USD')}/mes</span><span className="text-sm flex items-center gap-1"><Clock3 className="w-4 h-4"/>{x.due_date?fmtDate(x.due_date):'Sin fecha'}</span><Select value={x.status} onValueChange={v=>changeSub(x,v)}><SelectTrigger className="w-32"><SelectValue/></SelectTrigger><SelectContent>{['activo','pendiente','vencido','cancelado'].map(v=><SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent></Select><Button size="sm" onClick={()=>{setSelectedSub(x);setBillForm({amount:x.monthly_price_usd,payment_method:'transferencia',paid_at:'',notes:''});setBillOpen(true)}}><Receipt className="w-4 h-4 mr-1"/>Cobrar</Button></div>)}</div></div><div className="bg-card border rounded-2xl overflow-hidden"><div className="px-5 py-4 border-b"><h3 className="font-heading font-bold">Historial de pagos</h3></div>{billing.map(x=><div key={x.id} className="px-5 py-3 border-b flex gap-3"><span className="flex-1">{x.business_id}</span><span>{x.payment_method}</span><b>{fmtMoney(x.amount,'USD')}</b><span className="text-xs text-muted-foreground">{fmtDate(x.paid_at)}</span></div>)}{!billing.length&&<p className="p-8 text-center text-sm text-muted-foreground">Sin pagos registrados.</p>}</div></div>}
- {tab==='gastos'&&<><div className="flex justify-end"><Button onClick={()=>setExpenseOpen(true)}><Plus className="w-4 h-4 mr-2"/>Gasto de plataforma</Button></div><div className="bg-card border rounded-2xl overflow-hidden">{expenses.map(x=><div key={x.id} className="px-5 py-3 flex gap-3 border-b"><span className="flex-1">{x.description}</span><span>{x.category}</span><b>−{fmtMoney(x.amount,'USD')}</b></div>)}</div></>}
- <Dialog open={planOpen} onOpenChange={setPlanOpen}><DialogContent><DialogHeader><DialogTitle>{editing?'Editar plan':'Nuevo plan'}</DialogTitle></DialogHeader><form onSubmit={savePlan} className="space-y-4"><Label>Nombre</Label><Input required value={planForm.name} onChange={e=>setPlanForm({...planForm,name:e.target.value})}/><Label>Descripción</Label><Input value={planForm.description} onChange={e=>setPlanForm({...planForm,description:e.target.value})}/><Label>Precio mensual USD</Label><Input type="number" min="0.01" step="0.01" required value={planForm.monthly_price_usd} onChange={e=>setPlanForm({...planForm,monthly_price_usd:e.target.value})}/><div className="flex items-center gap-2"><Switch checked={planForm.active} onCheckedChange={v=>setPlanForm({...planForm,active:v})}/><Label>Plan habilitado para nuevas cuentas</Label></div><Button disabled={saving}>{saving?'Guardando…':'Guardar plan'}</Button></form></DialogContent></Dialog>
- <Dialog open={assignOpen} onOpenChange={setAssignOpen}><DialogContent><DialogHeader><DialogTitle>Asignar plan · {selectedBusiness?.name}</DialogTitle></DialogHeader><form onSubmit={assign} className="space-y-4"><Label>Plan</Label><Select value={assignForm.plan_id} onValueChange={v=>setAssignForm({...assignForm,plan_id:v})}><SelectTrigger><SelectValue placeholder="Selecciona un plan"/></SelectTrigger><SelectContent>{plans.filter(p=>p.active).map(p=><SelectItem key={p.id} value={p.id}>{p.name} · {fmtMoney(p.monthly_price_usd,'USD')}/mes</SelectItem>)}</SelectContent></Select><Label>Estado</Label><Select value={assignForm.status} onValueChange={v=>setAssignForm({...assignForm,status:v})}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{['activo','pendiente'].map(v=><SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent></Select><Label>Fecha de vencimiento</Label><Input type="date" required value={assignForm.due_date} onChange={e=>setAssignForm({...assignForm,due_date:e.target.value})}/><Button disabled={saving}>{saving?'Guardando…':'Asignar plan'}</Button></form></DialogContent></Dialog>
- <Dialog open={billOpen} onOpenChange={setBillOpen}><DialogContent><DialogHeader><DialogTitle>Registrar cobro</DialogTitle></DialogHeader><form onSubmit={registerBilling} className="space-y-4"><p className="text-sm text-muted-foreground">{selectedSub?.plan_name}</p><Label>Monto USD</Label><Input type="number" min="0.01" step="0.01" required value={billForm.amount} onChange={e=>setBillForm({...billForm,amount:e.target.value})}/><Label>Método</Label><Input required value={billForm.payment_method} onChange={e=>setBillForm({...billForm,payment_method:e.target.value})}/><Label>Fecha de pago</Label><Input type="datetime-local" value={billForm.paid_at} onChange={e=>setBillForm({...billForm,paid_at:e.target.value})}/><Label>Notas</Label><Input value={billForm.notes} onChange={e=>setBillForm({...billForm,notes:e.target.value})}/><Button disabled={saving}>{saving?'Registrando…':'Confirmar cobro'}</Button></form></DialogContent></Dialog>
- <Dialog open={expenseOpen} onOpenChange={setExpenseOpen}><DialogContent><DialogHeader><DialogTitle>Gasto de plataforma</DialogTitle></DialogHeader><form onSubmit={addExpense} className="space-y-4"><Label>Categoría</Label><Select value={expenseForm.category} onValueChange={v=>setExpenseForm({...expenseForm,category:v})}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{CATS.map(c=><SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent></Select><Label>Descripción</Label><Input required value={expenseForm.description} onChange={e=>setExpenseForm({...expenseForm,description:e.target.value})}/><Label>Monto USD</Label><Input type="number" min="0.01" step="0.01" required value={expenseForm.amount} onChange={e=>setExpenseForm({...expenseForm,amount:e.target.value})}/><Button disabled={saving}>{saving?'Guardando…':'Registrar'}</Button></form></DialogContent></Dialog></div>}
+import { useCallback, useEffect, useState } from "react";
+import { ShieldCheck, Store, Users, CreditCard, Receipt, CalendarDays, BarChart3, AlertTriangle, CheckCircle2, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
+import api, { apiError } from "../lib/api";
+import { fmtDate, fmtMoney, fmtNum } from "../lib/format";
+import { Button } from "../components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import { Switch } from "../components/ui/switch";
+
+export default function Plataforma() {
+  const [data, setData] = useState(null);
+  const [metrics, setMetrics] = useState(null);
+  const [plans, setPlans] = useState([]);
+  const [pending, setPending] = useState([]);
+  const [tab, setTab] = useState("resumen");
+  const [selectedBusiness, setSelectedBusiness] = useState("");
+  const [score, setScore] = useState(null);
+  const [scoreDays, setScoreDays] = useState("90");
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [overview, plansRes, pendingRes, metricsRes] = await Promise.all([
+        api.get("/platform/overview"),
+        api.get("/platform/plans"),
+        api.get("/platform/pending-users"),
+        api.get("/platform/billing-metrics"),
+      ]);
+      setData(overview.data);
+      setPlans(plansRes.data.plans || []);
+      setPending(pendingRes.data.users || []);
+      setMetrics(metricsRes.data);
+    } catch (e) {
+      toast.error(apiError(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const loadScore = async (businessId, days = scoreDays) => {
+    if (!businessId) return;
+    try {
+      const res = await api.get(`/platform/platia-score/${businessId}?days=${Number(days)}`);
+      setScore(res.data);
+    } catch (e) {
+      setScore(null);
+      toast.error(apiError(e));
+    }
+  };
+
+  const toggleBusiness = async (business, active) => {
+    try {
+      await api.put(`/platform/businesses/${business.id}/status`, { active });
+      toast.success(active ? "Cuenta habilitada" : "Cuenta deshabilitada");
+      load();
+    } catch (e) { toast.error(apiError(e)); }
+  };
+
+  const approve = async (user) => {
+    try {
+      await api.put(`/platform/users/${user.id}/approval`, { approved: true });
+      toast.success("Cuenta aprobada");
+      load();
+    } catch (e) { toast.error(apiError(e)); }
+  };
+
+  if (!data) return <div className="p-8 text-sm text-muted-foreground">Cargando plataforma…</div>;
+
+  const stats = data.stats || {};
+  const businesses = data.businesses || [];
+  const tabs = [
+    ["resumen", "Resumen"],
+    ["clientes", "Clientes"],
+    ["score", "PLATIA Score"],
+    ["planes", "Planes y precios"],
+  ];
+
+  return (
+    <div className="space-y-5" data-testid="plataforma-page">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="font-heading text-3xl font-extrabold flex items-center gap-2"><ShieldCheck className="w-7 h-7 text-primary" />Plataforma</h1>
+          <p className="text-sm text-muted-foreground">Gobernanza, clientes, planes, vencimientos, cobros y costos.</p>
+        </div>
+        <Button variant="outline" onClick={load} disabled={loading}><RefreshCw className="w-4 h-4 mr-2" />Actualizar</Button>
+      </div>
+
+      <div className="flex gap-1 p-1 bg-secondary rounded-xl overflow-x-auto">
+        {tabs.map(([value, label]) => <button key={value} onClick={() => setTab(value)} className={`px-4 py-2 rounded-lg text-sm whitespace-nowrap ${tab === value ? "bg-background shadow-sm" : ""}`}>{label}</button>)}
+      </div>
+
+      {tab === "resumen" && (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <Kpi title="Negocios" value={fmtNum(stats.total)} icon={<Store className="w-5 h-5" />} />
+            <Kpi title="Activos" value={fmtNum(stats.activos)} icon={<Users className="w-5 h-5" />} />
+            <Kpi title="MRR" value={fmtMoney(stats.mrr_usd || 0, "USD")} icon={<CreditCard className="w-5 h-5" />} />
+            <Kpi title="Cobrado este mes" value={fmtMoney(stats.cobrado_mes_usd || 0, "USD")} icon={<Receipt className="w-5 h-5" />} />
+            <Kpi title="Nuevos 30 días" value={fmtNum(stats.nuevos_30 || 0)} icon={<CalendarDays className="w-5 h-5" />} />
+          </div>
+          <div className="bg-card border rounded-2xl p-5">
+            <h3 className="font-heading font-bold mb-3">Próximos vencimientos</h3>
+            {(metrics?.due_soon || []).length ? metrics.due_soon.map(item => <div key={item.id} className="py-3 border-b flex justify-between"><span>{item.plan_name || "Sin plan"}</span><b>{fmtDate(item.due_date)}</b></div>) : <p className="text-sm text-muted-foreground">No hay cuentas por vencer en los próximos 7 días.</p>}
+          </div>
+        </>
+      )}
+
+      {tab === "clientes" && (
+        <div className="space-y-4">
+          <div className="bg-card border rounded-2xl overflow-hidden">
+            <div className="px-5 py-4 border-b"><h3 className="font-heading font-bold">Cuentas y suscripciones</h3></div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm"><thead><tr className="text-left text-xs uppercase text-muted-foreground bg-secondary/50"><th className="px-5 py-3">Negocio</th><th>Alta</th><th>Plan</th><th>Estado</th><th>Cuenta</th></tr></thead>
+                <tbody className="divide-y">{businesses.map(b => <tr key={b.id}><td className="px-5 py-3"><b>{b.name}</b><div className="text-xs text-muted-foreground">{b.owner_email}</div></td><td>{fmtDate(b.created_at)}</td><td>{b.plan_name || "Sin plan"}</td><td>{b.subscription_status || "sin plan"}</td><td><Switch checked={!!b.active} onCheckedChange={value => toggleBusiness(b, value)} /></td></tr>)}</tbody>
+              </table>
+            </div>
+          </div>
+          <div className="bg-card border rounded-2xl p-5"><h3 className="font-heading font-bold mb-3">Solicitudes pendientes ({pending.length})</h3>{pending.map(u => <div key={u.id} className="flex items-center gap-3 py-3 border-b"><div className="flex-1"><b>{u.name || u.email}</b><div className="text-xs text-muted-foreground">{u.email} · Alta {fmtDate(u.created_at)}</div></div><Button size="sm" onClick={() => approve(u)}>Aprobar</Button></div>)}</div>
+        </div>
+      )}
+
+      {tab === "score" && (
+        <div className="bg-card border rounded-2xl p-5 space-y-5">
+          <div className="flex items-center justify-between flex-wrap gap-3"><div><h3 className="font-heading font-bold flex items-center gap-2"><BarChart3 className="w-5 h-5 text-primary" />PLATIA Score</h3><p className="text-sm text-muted-foreground">Indicador interno de salud y riesgo empresarial.</p></div><div className="flex gap-2"><Select value={scoreDays} onValueChange={value => { setScoreDays(value); if (selectedBusiness) loadScore(selectedBusiness, value); }}><SelectTrigger className="w-28"><SelectValue /></SelectTrigger><SelectContent>{["30", "60", "90", "180", "365"].map(v => <SelectItem key={v} value={v}>{v} días</SelectItem>)}</SelectContent></Select></div></div>
+          <Select value={selectedBusiness} onValueChange={value => { setSelectedBusiness(value); setScore(null); loadScore(value, scoreDays); }}><SelectTrigger><SelectValue placeholder="Selecciona un negocio" /></SelectTrigger><SelectContent>{businesses.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent></Select>
+          {!score ? <div className="border rounded-2xl p-8 text-center text-sm text-muted-foreground">Selecciona un negocio para consultar su score.</div> : <div className="space-y-4"><div className="grid md:grid-cols-3 gap-3"><Kpi title="Score" value={`${score.score}/1000`} /><Kpi title="Banda" value={score.band || "—"} /><Kpi title="Período" value={`${score.period_days || scoreDays} días`} /></div><div className="border rounded-2xl p-4"><h4 className="font-bold mb-3">Componentes</h4>{(score.components || []).map(component => <div key={component.name} className="mb-4"><div className="flex justify-between text-sm"><span>{component.name}</span><b>{component.score}</b></div><div className="h-2 bg-secondary rounded-full mt-2"><div className="h-2 bg-primary rounded-full" style={{ width: `${Math.max(0, Math.min(100, Number(component.score || 0) / 10))}%` }} /></div></div>)}</div><div className="grid md:grid-cols-2 gap-4"><List title="Fortalezas" icon={<CheckCircle2 className="w-4 h-4" />} items={score.strengths} /><List title="Alertas de riesgo" icon={<AlertTriangle className="w-4 h-4" />} items={score.risk_alerts} /></div><div className="border rounded-2xl p-4"><h4 className="font-bold mb-2">Acciones recomendadas</h4><ListItems items={score.actions} /></div><p className="text-xs text-muted-foreground">{score.disclaimer}</p></div>}
+        </div>
+      )}
+
+      {tab === "planes" && <div className="grid md:grid-cols-3 gap-4">{plans.map(plan => <div key={plan.id} className="bg-card border rounded-2xl p-5"><div className="flex justify-between"><h3 className="text-xl font-bold">{plan.name}</h3><span className="text-xs px-2 py-1 rounded-full bg-secondary">{plan.active ? "Activo" : "Inactivo"}</span></div><p className="text-sm text-muted-foreground mt-2">{plan.description}</p><p className="text-3xl font-bold mt-5">{fmtMoney(plan.monthly_price_usd, "USD")}<span className="text-sm font-normal"> / mes</span></p></div>)}</div>}
+    </div>
+  );
+}
+
+function Kpi({ title, value, icon }) {
+  return <div className="bg-card border border-border rounded-2xl p-5"><div className="flex items-center justify-between"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>{icon && <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary">{icon}</div>}</div><p className="text-2xl font-extrabold mt-2">{value ?? "0"}</p></div>;
+}
+
+function List({ title, icon, items }) {
+  return <div className="border rounded-2xl p-4"><h4 className="font-bold flex items-center gap-2 mb-3">{icon}{title}</h4><ListItems items={items} /></div>;
+}
+
+function ListItems({ items }) {
+  return (items || []).length ? <ul className="space-y-2 text-sm">{items.map(item => <li key={item}>• {item}</li>)}</ul> : <p className="text-sm text-muted-foreground">Sin elementos.</p>;
+}
